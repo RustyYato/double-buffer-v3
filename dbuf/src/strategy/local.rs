@@ -19,6 +19,12 @@ impl LocalStrategy {
     }
 }
 
+impl Default for LocalStrategy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// the writer tag for [`LocalStrategy`]
 pub struct WriterTag(());
 /// the reader tag for [`LocalStrategy`]

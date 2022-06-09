@@ -32,6 +32,12 @@ impl LocalTrackingStrategy {
     }
 }
 
+impl Default for LocalTrackingStrategy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// the writer tag for [`LocalTrackingStrategy`]
 pub struct WriterTag(());
 /// the reader tag for [`LocalTrackingStrategy`]
