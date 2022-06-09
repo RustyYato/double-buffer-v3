@@ -1,13 +1,56 @@
 //! a reader to a double buffer
 
-use crate::interface::{ReaderTag, Strategy, StrategyOf, StrongOf, WeakRef};
+use core::{marker::PhantomData, mem::ManuallyDrop, ops::Deref, ptr::NonNull};
+
+use crate::interface::{
+    BufferOf, RawBuffers, RawBuffersOf, ReaderGuardOf, ReaderTagOf, Strategy, StrategyOf, StrongOf,
+    StrongRef, WeakRef, Which,
+};
 
 /// A reader to a double buffer
-pub struct Reader<W, R = ReaderTag<StrategyOf<StrongOf<W>>>> {
+pub struct Reader<W, R = ReaderTagOf<StrategyOf<StrongOf<W>>>> {
     /// the reader tag which identifies this reader to the strategy
     tag: R,
     /// a weak pointer to the double buffer's shared state
     ptr: W,
+}
+
+/// A RAII guard which locks the double buffer and allows reading into it
+pub struct ReadGuard<'a, S: StrongRef, B: ?Sized = BufferOf<RawBuffersOf<S>>> {
+    /// The buffer we're reading into
+    buffer: NonNull<B>,
+    /// the raw read guard which locks the double buffer
+    /// only used in `Drop`
+    _raw: RawReadGuard<'a, S>,
+}
+
+impl<S: StrongRef, B> Deref for ReadGuard<'_, S, B> {
+    type Target = B;
+
+    fn deref(&self) -> &Self::Target {
+        // SAFETY: the raw guard ensure that the writer can't write to this buffer
+        unsafe { self.buffer.as_ref() }
+    }
+}
+/// A raw RAII guard which specifies how long the reader locks the double buffer for
+struct RawReadGuard<'a, S: StrongRef> {
+    /// the reader which owns the lock
+    tag: &'a mut ReaderTagOf<StrategyOf<S>>,
+    /// a strong ref to the shared state to keep it alive
+    strong_ref: S,
+    /// the reader guard token which the strategy can use to track which readers reading
+    guard: ManuallyDrop<ReaderGuardOf<StrategyOf<S>>>,
+    /// a lifetime to ensure that no other reads happen at the same time
+    lifetime: PhantomData<&'a S>,
+}
+
+impl<S: StrongRef> Drop for RawReadGuard<'_, S> {
+    fn drop(&mut self) {
+        // SAFETY: the guard is created in `Reader::try_get` and never touched until here so it's still valid
+        let guard = unsafe { ManuallyDrop::take(&mut self.guard) };
+        // SAFETY: the reader (self.tag) was the one that created the guard by construction of `Self`
+        unsafe { self.strong_ref.strategy.end_read_guard(self.tag, guard) }
+    }
 }
 
 impl<W: WeakRef> Reader<W> {
@@ -17,8 +60,42 @@ impl<W: WeakRef> Reader<W> {
     ///
     /// If the ptr is dangling (i.e. if `W::upgrade` would return `None`) the reader tag may dangle
     /// If the ptr is not dangling (i.e. if `W::upgrade` would return `Some`) the reader tag must be managed by the strategy
-    pub unsafe fn from_raw_parts(tag: ReaderTag<StrategyOf<StrongOf<W>>>, ptr: W) -> Self {
+    pub unsafe fn from_raw_parts(tag: ReaderTagOf<StrategyOf<StrongOf<W>>>, ptr: W) -> Self {
         Self { tag, ptr }
+    }
+
+    /// get a read lock on the double buffer
+    pub fn try_get(&mut self) -> Result<ReadGuard<'_, StrongOf<W>>, W::UpgradeError> {
+        let strong_ref: W::Strong = W::upgrade(&self.ptr)?;
+        let shared = &*strong_ref;
+
+        // first begin the guard *before* loading which buffer is for reads
+        // to avoid racing with the writer
+        let guard = shared.strategy.begin_read_guard(&mut self.tag);
+
+        let which = shared.which.load();
+        let (_writer, reader) = shared.buffers.get(which);
+        Ok(ReadGuard {
+            // SAFETY: the reader ptr is valid for as long as the `strong_ref` is alive
+            buffer: unsafe { NonNull::new_unchecked(reader as *mut _) },
+            _raw: RawReadGuard {
+                tag: &mut self.tag,
+                strong_ref,
+                guard: ManuallyDrop::new(guard),
+                lifetime: PhantomData,
+            },
+        })
+    }
+
+    /// get a read lock on the double buffer
+    pub fn get(&mut self) -> ReadGuard<'_, StrongOf<W>>
+    where
+        W: WeakRef<UpgradeError = core::convert::Infallible>,
+    {
+        match self.try_get() {
+            Ok(guard) => guard,
+            Err(inf) => match inf {},
+        }
     }
 }
 

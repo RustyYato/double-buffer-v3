@@ -1,7 +1,7 @@
 //! the writer to a double buffer
 
 use crate::interface::{
-    Buffer, CaptureOf, IntoStrongRef, RawBuffers, RawBuffersOf, Strategy, StrategyOf, StrongRef,
+    BufferOf, CaptureOf, IntoStrongRef, RawBuffers, RawBuffersOf, Strategy, StrategyOf, StrongRef,
     ValidationErrorOf, WeakOf, Which, WriterTag,
 };
 
@@ -63,7 +63,7 @@ impl<S: StrongRef> Writer<S> {
     }
 
     /// split the writer into the two read-only buffers
-    pub fn split(&self) -> Split<'_, Buffer<RawBuffersOf<S>>> {
+    pub fn split(&self) -> Split<'_, BufferOf<RawBuffersOf<S>>> {
         let shared = &*self.ptr;
         // SAFETY: split can't race with `try_start_buffer_swap` because `try_start_buffer_swap`
         // takes `&mut self` which can't be called at the same time as `&self` methods
@@ -83,7 +83,7 @@ impl<S: StrongRef> Writer<S> {
     }
 
     /// split the writer into the two read-only buffers
-    pub fn split_mut(&mut self) -> SplitMut<'_, Buffer<RawBuffersOf<S>>> {
+    pub fn split_mut(&mut self) -> SplitMut<'_, BufferOf<RawBuffersOf<S>>> {
         let shared = &*self.ptr;
         // SAFETY: split can't race with `try_start_buffer_swap` because `try_start_buffer_swap`
         // takes `&mut self` which can't be called at the same time as `&self` methods

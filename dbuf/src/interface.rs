@@ -11,11 +11,13 @@ pub type StrategyOf<S> = <S as StrongRef>::Strategy;
 /// the raw buffers type used by a strong reference type
 pub type RawBuffersOf<S> = <S as StrongRef>::RawBuffers;
 /// the buffer type used by the raw buffers type
-pub type Buffer<B> = <B as RawBuffers>::Buffer;
+pub type BufferOf<B> = <B as RawBuffers>::Buffer;
 /// the writer tag type of a strategy type
 pub type WriterTag<S> = <S as Strategy>::WriterTag;
 /// the reader tag type of a strategy type
-pub type ReaderTag<S> = <S as Strategy>::ReaderTag;
+pub type ReaderTagOf<S> = <S as Strategy>::ReaderTag;
+/// the reader guard type of a strategy type
+pub type ReaderGuardOf<S> = <S as Strategy>::ReaderGuard;
 /// the boolean flag type of a strategy type
 pub type WhichOf<S> = <S as Strategy>::Which;
 /// the validation token type of a strategy type
@@ -47,6 +49,7 @@ pub unsafe trait IntoStrongRef {
 /// * `Deref::deref` cannot change which value it points to
 /// * `WeakRef::upgrade(&StrongRef::downgrade(this))` must alias with `this` if
 ///     `WeakRef::upgrade` returns `Ok`
+/// * moving the strong ref shouldn't invalidate pointers to inside the strong ref
 pub unsafe trait StrongRef:
     Deref<Target = crate::raw::Shared<Self::Strategy, Self::RawBuffers>>
 {
@@ -118,6 +121,8 @@ pub unsafe trait Strategy {
     type ValidationError: core::fmt::Debug;
     /// A capture token which holds which readers are in the write buffer
     type Capture;
+    /// The guard type that
+    type ReaderGuard;
 
     /// Creates a writer tag managed by this strategy
     ///
@@ -165,7 +170,21 @@ pub unsafe trait Strategy {
     fn have_readers_exited(&self, writer: &Self::WriterTag, capture: &mut Self::Capture) -> bool;
 
     /// Pause the current thread while waiting for readers to exit
-    fn pause(&self, writer: &Self::WriterTag) {}
+    fn pause(&self, _writer: &Self::WriterTag) {}
+
+    /// begin a read guard, this locks the buffer and allows `capture_readers` to see which readers are actively reading
+    ///
+    /// # Panics
+    ///
+    /// may panic if `begin_read_guard` is called twice before calling `end_read_guard`
+    fn begin_read_guard(&self, reader: &mut Self::ReaderTag) -> Self::ReaderGuard;
+
+    /// end the read guard for the given reader
+    ///
+    /// # Safety
+    ///
+    /// the reader specified must have creatd the guard
+    unsafe fn end_read_guard(&self, reader: &mut Self::ReaderTag, guard: Self::ReaderGuard);
 }
 
 /// A token for which buffer is on top
