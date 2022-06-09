@@ -137,7 +137,13 @@ unsafe impl Strategy for TrackingStrategy {
             .0
             .retain(|(generation, tag)| *generation == tag.load(Ordering::Relaxed));
 
-        capture.0.is_empty()
+        let is_empty = capture.0.is_empty();
+
+        if is_empty {
+            core::sync::atomic::fence(Ordering::Release);
+        }
+
+        is_empty
     }
 
     #[inline]
