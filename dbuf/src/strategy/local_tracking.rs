@@ -35,7 +35,6 @@ impl Default for LocalTrackingStrategy {
 /// the writer tag for [`LocalTrackingStrategy`]
 pub struct WriterTag(());
 /// the reader tag for [`LocalTrackingStrategy`]
-#[derive(Clone, Copy)]
 pub struct ReaderTag {
     /// the index of this reader tag
     index: Index,
@@ -182,6 +181,7 @@ fn test_local_tracking() {
 
     assert_eq!(*reader.get(), 20);
 
+    let mut reader2 = reader.clone();
     let _a = reader.get();
 
     // SAFETY: we don't call any &mut self methods on writer any more
@@ -190,6 +190,7 @@ fn test_local_tracking() {
     assert!(!writer.is_swap_finished(&mut swap));
 
     drop(_a);
+    let _a = reader2.get();
 
     assert!(writer.is_swap_finished(&mut swap));
 }
