@@ -55,22 +55,27 @@ unsafe impl Strategy for LocalStrategy {
     type Capture = Capture;
     type ReaderGuard = ReaderGuard;
 
+    #[inline]
     unsafe fn create_writer_tag(&self) -> Self::WriterTag {
         WriterTag(())
     }
 
+    #[inline]
     unsafe fn create_reader_tag_from_writer(&self, _parent: &Self::WriterTag) -> Self::ReaderTag {
         ReaderTag(())
     }
 
+    #[inline]
     unsafe fn create_reader_tag_from_reader(&self, _parent: &Self::ReaderTag) -> Self::ReaderTag {
         ReaderTag(())
     }
 
+    #[inline]
     fn dangling_reader_tag() -> Self::ReaderTag {
         ReaderTag(())
     }
 
+    #[inline]
     fn validate_swap(
         &self,
         _writer: &mut Self::WriterTag,
@@ -82,6 +87,7 @@ unsafe impl Strategy for LocalStrategy {
         }
     }
 
+    #[inline]
     unsafe fn capture_readers(
         &self,
         _: &mut Self::WriterTag,
@@ -90,10 +96,12 @@ unsafe impl Strategy for LocalStrategy {
         Capture(())
     }
 
+    #[inline]
     fn have_readers_exited(&self, _writer: &Self::WriterTag, _capture: &mut Self::Capture) -> bool {
         true
     }
 
+    #[inline]
     unsafe fn begin_read_guard(&self, _reader: &mut Self::ReaderTag) -> Self::ReaderGuard {
         let count = self.active_readers.get();
         self.active_readers.set(
@@ -104,8 +112,39 @@ unsafe impl Strategy for LocalStrategy {
         ReaderGuard(())
     }
 
+    #[inline]
     unsafe fn end_read_guard(&self, _reader: &mut Self::ReaderTag, _guard: Self::ReaderGuard) {
         let count = self.active_readers.get();
         self.active_readers.set(count - 1);
     }
+}
+
+#[test]
+fn test_local() {
+    let mut shared = crate::raw::Shared::new(
+        LocalStrategy::new(),
+        crate::raw::SizedRawDoubleBuffer::new(0, 0),
+    );
+    let mut writer = crate::raw::Writer::new(&mut shared);
+
+    let mut reader = writer.reader();
+
+    let split_mut = writer.split_mut();
+    *split_mut.writer = 10;
+    assert_eq!(*reader.get(), 0);
+
+    writer.try_swap_buffers().unwrap();
+
+    assert_eq!(*reader.get(), 10);
+    let split_mut = writer.split_mut();
+    *split_mut.writer = 20;
+    assert_eq!(*reader.get(), 10);
+
+    writer.try_swap_buffers().unwrap();
+
+    assert_eq!(*reader.get(), 20);
+
+    let _a = reader.get();
+
+    assert!(writer.try_swap_buffers().is_err());
 }
