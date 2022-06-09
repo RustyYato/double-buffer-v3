@@ -104,7 +104,7 @@ impl<S: StrongRef> Writer<S> {
 
     /// Swap the two buffers
     pub fn try_swap_buffers(&mut self) -> Result<(), ValidationErrorOf<StrategyOf<S>>> {
-        // SAFETY: FIXME
+        // SAFETY: we call `finish_swap`
         let swap = unsafe { self.try_start_buffer_swap()? };
         self.finish_swap(swap);
         Ok(())
@@ -125,7 +125,8 @@ impl<S: StrongRef> Writer<S> {
     ///
     /// # Safety
     ///
-    /// FIXME
+    /// You must either poll `is_swap_finished` or call `finish_swap` with the `swap`
+    /// before calling any other methods that take `&mut self`
     pub unsafe fn try_start_buffer_swap(
         &mut self,
     ) -> Result<Swap<S>, ValidationErrorOf<StrategyOf<S>>> {
@@ -156,17 +157,52 @@ impl<S: StrongRef> Writer<S> {
 
     /// Check if all readers have exited the write buffer
     pub fn finish_swap(&self, mut swap: Swap<S>) {
-        if self.is_swap_finished(&mut swap) {
-            return;
+        /// Drop slow to reduce the code size of `finish_swap`
+        #[cold]
+        #[inline(never)]
+        fn drop_slow<T>(_: T) {}
+
+        let mut swap = FinishSwapOnDrop {
+            tag: &self.tag,
+            shared: &self.ptr,
+            capture: &mut swap.capture,
+        };
+
+        if !swap.is_finished() {
+            drop_slow(FinishSwapOnDrop {
+                tag: swap.tag,
+                shared: swap.shared,
+                capture: swap.capture,
+            })
         }
 
-        self.finish_swap_slow(swap)
+        core::mem::forget(swap);
     }
+}
 
-    /// Check if all readers have exited the write buffer
-    fn finish_swap_slow(&self, mut swap: Swap<S>) {
-        while !self.is_swap_finished(&mut swap) {
-            self.ptr.strategy.pause(&self.tag)
+/// A guard to ensure that the swap is finished before exiting `finish_swap`
+struct FinishSwapOnDrop<'a, S: Strategy, B> {
+    /// the writer associated with this swap
+    tag: &'a WriterTag<S>,
+    /// the shared buffer for this swap
+    shared: &'a super::Shared<S, B>,
+    /// the capture token for this swap
+    capture: &'a mut CaptureOf<S>,
+}
+
+impl<S: Strategy, B> FinishSwapOnDrop<'_, S, B> {
+    /// is the given swap finished
+    fn is_finished(&mut self) -> bool {
+        self.shared
+            .strategy
+            .have_readers_exited(self.tag, self.capture)
+    }
+}
+
+impl<S: Strategy, B> Drop for FinishSwapOnDrop<'_, S, B> {
+    fn drop(&mut self) {
+        while !self.is_finished() {
+            self.shared.strategy.pause(self.tag)
         }
     }
 }
