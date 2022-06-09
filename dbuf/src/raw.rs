@@ -7,8 +7,8 @@ use crate::interface::{RawBuffers, Strategy, Which, WhichOf};
 mod reader;
 mod writer;
 
-pub use reader::Reader;
-pub use writer::Writer;
+pub use reader::{ReadGuard, Reader};
+pub use writer::{Split, SplitMut, Swap, Writer};
 
 /// The shared state in required to manage a double buffer
 pub struct Shared<S, B: ?Sized, W = WhichOf<S>> {
@@ -20,7 +20,7 @@ pub struct Shared<S, B: ?Sized, W = WhichOf<S>> {
     buffers: B,
 }
 
-impl<S: Strategy, B: RawBuffers> Shared<S, B> {
+impl<S: Strategy, B> Shared<S, B> {
     /// Create a new shared state to manage the double buffer
     pub fn new(strategy: S, buffers: B) -> Self {
         Self {
@@ -49,15 +49,15 @@ unsafe impl<T: Send + Sync> Sync for SizedRawDoubleBuffer<T> {}
 ///
 /// the
 #[repr(transparent)]
-pub struct SliceRawDoubleBuffer<T>(UnsafeCell<[T]>);
+pub struct SliceRawDoubleBuffer<T: ?Sized>(UnsafeCell<T>);
 
 // SAFETY:
 // * (T: Send) we allow getting a mutable refrence to T from a mutable reference to Self
-unsafe impl<T: Send> Send for SliceRawDoubleBuffer<T> {}
+unsafe impl<T: ?Sized + Send> Send for SliceRawDoubleBuffer<T> {}
 // SAFETY:
 // * (T: Send) we allow getting a mutable refrence to T from a shared reference to Self
 // * (T: Sync) we allow getting a shared refrence to T from a shared reference to Self
-unsafe impl<T: Send + Sync> Sync for SliceRawDoubleBuffer<T> {}
+unsafe impl<T: ?Sized + Send + Sync> Sync for SliceRawDoubleBuffer<T> {}
 
 impl<T> SizedRawDoubleBuffer<T> {
     /// Create a new sized raw double buffer
@@ -66,11 +66,22 @@ impl<T> SizedRawDoubleBuffer<T> {
     }
 }
 
-impl<T> SliceRawDoubleBuffer<T> {
+impl<T, const N: usize> SliceRawDoubleBuffer<[T; N]> {
     /// Create a new slice raw double buffer
     ///
     /// The length of the slice must be even
-    pub fn new(slice: &mut [T]) -> &mut Self {
+    pub fn from_array(array: [T; N]) -> Self {
+        assert!(N % 2 == 0);
+        // Safety: Self has the same representation as [T]
+        Self(UnsafeCell::new(array))
+    }
+}
+
+impl<T> SliceRawDoubleBuffer<[T]> {
+    /// Create a new slice raw double buffer
+    ///
+    /// The length of the slice must be even
+    pub fn from_ref(slice: &mut [T]) -> &mut Self {
         assert!(slice.len() % 2 == 0);
         // Safety: Self has the same representation as [T]
         unsafe { &mut *(slice as *mut [T] as *mut Self) }
@@ -96,7 +107,7 @@ unsafe impl<T> RawBuffers for SizedRawDoubleBuffer<T> {
 // * the two pointers returned from get are always valid
 // * they are disjoint
 // * the data is not dereferenced
-unsafe impl<T> RawBuffers for SliceRawDoubleBuffer<T> {
+unsafe impl<T> RawBuffers for SliceRawDoubleBuffer<[T]> {
     type Buffer = [T];
 
     fn get(&self, which: bool) -> (*mut Self::Buffer, *const Self::Buffer) {

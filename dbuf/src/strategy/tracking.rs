@@ -185,7 +185,7 @@ fn _test_bounds() {
     type SizedPtr<'a> =
         &'a crate::raw::Shared<TrackingStrategy, crate::raw::SizedRawDoubleBuffer<()>>;
     type SlicePtr<'a> =
-        &'a crate::raw::Shared<TrackingStrategy, crate::raw::SliceRawDoubleBuffer<()>>;
+        &'a crate::raw::Shared<TrackingStrategy, crate::raw::SliceRawDoubleBuffer<[()]>>;
 
     assert_send::<TrackingStrategy>;
     assert_sync::<TrackingStrategy>;

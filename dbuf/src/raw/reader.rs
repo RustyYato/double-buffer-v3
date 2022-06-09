@@ -36,7 +36,7 @@ unsafe impl<B: ?Sized + Sync> Send for SharedRef<B> {}
 // SAFETY: the shared ref is only allows access to &B
 unsafe impl<B: ?Sized + Sync> Sync for SharedRef<B> {}
 
-impl<S: StrongRef, B> Deref for ReadGuard<'_, S, B> {
+impl<S: StrongRef, B: ?Sized> Deref for ReadGuard<'_, S, B> {
     type Target = B;
 
     fn deref(&self) -> &Self::Target {

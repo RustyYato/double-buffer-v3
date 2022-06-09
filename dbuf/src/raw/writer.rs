@@ -36,9 +36,9 @@ pub struct SplitMut<'a, T: ?Sized> {
 }
 
 /// The two buffers
-pub struct Swap<S: StrongRef> {
+pub struct Swap<C> {
     /// the capture token which represents all the readers
-    capture: CaptureOf<StrategyOf<S>>,
+    capture: C,
 }
 
 impl<S: StrongRef> Writer<S> {
@@ -129,7 +129,7 @@ impl<S: StrongRef> Writer<S> {
     /// before calling any other methods that take `&mut self`
     pub unsafe fn try_start_buffer_swap(
         &mut self,
-    ) -> Result<Swap<S>, ValidationErrorOf<StrategyOf<S>>> {
+    ) -> Result<Swap<CaptureOf<StrategyOf<S>>>, ValidationErrorOf<StrategyOf<S>>> {
         let shared = &*self.ptr;
         let validation_token = shared.strategy.validate_swap(&mut self.tag)?;
 
@@ -149,14 +149,14 @@ impl<S: StrongRef> Writer<S> {
     }
 
     /// Check if all readers have exited the write buffer
-    pub fn is_swap_finished(&self, swap: &mut Swap<S>) -> bool {
+    pub fn is_swap_finished(&self, swap: &mut Swap<CaptureOf<StrategyOf<S>>>) -> bool {
         self.ptr
             .strategy
             .have_readers_exited(&self.tag, &mut swap.capture)
     }
 
     /// Check if all readers have exited the write buffer
-    pub fn finish_swap(&self, mut swap: Swap<S>) {
+    pub fn finish_swap(&self, mut swap: Swap<CaptureOf<StrategyOf<S>>>) {
         /// Drop slow to reduce the code size of `finish_swap`
         #[cold]
         #[inline(never)]
@@ -201,8 +201,9 @@ impl<S: Strategy, B: ?Sized> FinishSwapOnDrop<'_, S, B> {
 
 impl<S: Strategy, B: ?Sized> Drop for FinishSwapOnDrop<'_, S, B> {
     fn drop(&mut self) {
+        let mut pause = Default::default();
         while !self.is_finished() {
-            self.shared.strategy.pause(self.tag)
+            self.shared.strategy.pause(self.tag, &mut pause)
         }
     }
 }
