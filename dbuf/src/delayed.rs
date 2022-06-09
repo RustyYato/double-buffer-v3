@@ -45,6 +45,15 @@ impl<S: StrongRef> DelayedWriter<S> {
         }
     }
 
+    /// get a mutable reference to the inner writer if the swap is finished
+    pub fn try_writer_mut(&mut self) -> Option<&mut Writer<S>> {
+        if self.is_swap_finished() {
+            Some(&mut self.writer)
+        } else {
+            None
+        }
+    }
+
     /// finish an in progress buffer swap
     pub fn finish_swap(&mut self) -> &mut Writer<S> {
         if let Some(swap) = core::mem::take(&mut self.swap) {
