@@ -54,7 +54,7 @@ pub unsafe trait StrongRef:
     Deref<Target = crate::raw::Shared<Self::Strategy, Self::RawBuffers>>
 {
     /// The raw buffers type specified by this strongref
-    type RawBuffers: RawBuffers;
+    type RawBuffers: ?Sized + RawBuffers;
     /// The strategy type specified by this strongref
     type Strategy: Strategy;
     /// The associated weak ref type that can be downgraded to

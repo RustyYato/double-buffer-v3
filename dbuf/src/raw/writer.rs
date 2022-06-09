@@ -181,7 +181,7 @@ impl<S: StrongRef> Writer<S> {
 }
 
 /// A guard to ensure that the swap is finished before exiting `finish_swap`
-struct FinishSwapOnDrop<'a, S: Strategy, B> {
+struct FinishSwapOnDrop<'a, S: Strategy, B: ?Sized> {
     /// the writer associated with this swap
     tag: &'a WriterTag<S>,
     /// the shared buffer for this swap
@@ -190,7 +190,7 @@ struct FinishSwapOnDrop<'a, S: Strategy, B> {
     capture: &'a mut CaptureOf<S>,
 }
 
-impl<S: Strategy, B> FinishSwapOnDrop<'_, S, B> {
+impl<S: Strategy, B: ?Sized> FinishSwapOnDrop<'_, S, B> {
     /// is the given swap finished
     fn is_finished(&mut self) -> bool {
         self.shared
@@ -199,7 +199,7 @@ impl<S: Strategy, B> FinishSwapOnDrop<'_, S, B> {
     }
 }
 
-impl<S: Strategy, B> Drop for FinishSwapOnDrop<'_, S, B> {
+impl<S: Strategy, B: ?Sized> Drop for FinishSwapOnDrop<'_, S, B> {
     fn drop(&mut self) {
         while !self.is_finished() {
             self.shared.strategy.pause(self.tag)
