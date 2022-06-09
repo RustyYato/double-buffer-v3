@@ -203,6 +203,7 @@ pub unsafe trait Strategy {
 ///  i.e. this functions shoul always be safe to call and shoule never panic
 ///
 /// ```
+/// # use dbuf::interface::Which;
 /// fn which<W: Which>(which: W) {
 ///     let a = which.load();
 ///     let a_unsync = unsafe { which.load_unsync() };
