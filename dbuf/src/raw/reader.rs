@@ -18,18 +18,30 @@ pub struct Reader<W, R = ReaderTagOf<StrategyOf<StrongOf<W>>>> {
 /// A RAII guard which locks the double buffer and allows reading into it
 pub struct ReadGuard<'a, S: StrongRef, B: ?Sized = BufferOf<RawBuffersOf<S>>> {
     /// The buffer we're reading into
-    buffer: NonNull<B>,
+    buffer: SharedRef<B>,
     /// the raw read guard which locks the double buffer
     /// only used in `Drop`
     _raw: RawReadGuard<'a, S>,
 }
+
+/// A RAII guard which locks the double buffer and allows reading into it
+#[repr(transparent)]
+pub struct SharedRef<B: ?Sized> {
+    /// The buffer we're reading into
+    ptr: NonNull<B>,
+}
+
+// SAFETY: the shared ref is only allows access to &B
+unsafe impl<B: ?Sized + Sync> Send for SharedRef<B> {}
+// SAFETY: the shared ref is only allows access to &B
+unsafe impl<B: ?Sized + Sync> Sync for SharedRef<B> {}
 
 impl<S: StrongRef, B> Deref for ReadGuard<'_, S, B> {
     type Target = B;
 
     fn deref(&self) -> &Self::Target {
         // SAFETY: the raw guard ensure that the writer can't write to this buffer
-        unsafe { self.buffer.as_ref() }
+        unsafe { self.buffer.ptr.as_ref() }
     }
 }
 /// A raw RAII guard which specifies how long the reader locks the double buffer for
@@ -76,8 +88,10 @@ impl<W: WeakRef> Reader<W> {
         let which = shared.which.load();
         let (_writer, reader) = shared.buffers.get(which);
         Ok(ReadGuard {
-            // SAFETY: the reader ptr is valid for as long as the `strong_ref` is alive
-            buffer: unsafe { NonNull::new_unchecked(reader as *mut _) },
+            buffer: SharedRef {
+                // SAFETY: the reader ptr is valid for as long as the `strong_ref` is alive
+                ptr: unsafe { NonNull::new_unchecked(reader as *mut _) },
+            },
             _raw: RawReadGuard {
                 tag: &mut self.tag,
                 strong_ref,
