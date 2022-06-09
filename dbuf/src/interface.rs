@@ -75,6 +75,7 @@ pub unsafe trait StrongRef:
 /// * `Deref::deref` cannot change which value it points to
 /// * `WeakRef::upgrade(&StrongRef::downgrade(this))` must alias with `this` if
 ///     `WeakRef::upgrade` returns `Ok`
+/// * once `WeakRef::upgrade` returns `Err` it must always return `Err`
 pub unsafe trait WeakRef: Clone {
     /// The associated strong reference
     type Strong: StrongRef<Weak = Self>;
@@ -177,7 +178,11 @@ pub unsafe trait Strategy {
     /// # Panics
     ///
     /// may panic if `begin_read_guard` is called twice before calling `end_read_guard`
-    fn begin_read_guard(&self, reader: &mut Self::ReaderTag) -> Self::ReaderGuard;
+    ///
+    /// # Safety
+    ///
+    /// the reader tag may not be dangling
+    unsafe fn begin_read_guard(&self, reader: &mut Self::ReaderTag) -> Self::ReaderGuard;
 
     /// end the read guard for the given reader
     ///

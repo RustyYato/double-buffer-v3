@@ -83,7 +83,9 @@ impl<W: WeakRef> Reader<W> {
 
         // first begin the guard *before* loading which buffer is for reads
         // to avoid racing with the writer
-        let guard = shared.strategy.begin_read_guard(&mut self.tag);
+        //
+        // SAFETY: the upgrade succeeded so the reader tag isn't dangling
+        let guard = unsafe { shared.strategy.begin_read_guard(&mut self.tag) };
 
         let which = shared.which.load();
         let (_writer, reader) = shared.buffers.get(which);
