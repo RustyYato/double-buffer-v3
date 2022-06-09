@@ -53,6 +53,20 @@ impl<S: StrongRef> DelayedWriter<S> {
 
         &mut self.writer
     }
+
+    /// finish an in progress buffer swap
+    pub fn into_finish_swap(mut self) -> Writer<S> {
+        self.finish_swap();
+
+        self.writer
+    }
+
+    /// check if the swap is finished
+    pub fn is_swap_finished(&mut self) -> bool {
+        self.swap
+            .as_mut()
+            .map_or(true, |swap| self.writer.is_swap_finished(swap))
+    }
 }
 
 impl<S: StrongRef> Deref for DelayedWriter<S> {
@@ -74,6 +88,8 @@ fn test() {
     ));
 
     let split = writer.split();
+    assert_eq!(split.writer, [10]);
+    assert_eq!(split.reader, [20]);
 
     let mut r1 = writer.reader();
     let mut r2 = writer.reader();
@@ -86,5 +102,9 @@ fn test() {
 
     assert!(!core::ptr::eq(&*a, &*b));
 
-    let a = writer.finish_swap();
+    assert!(!writer.is_swap_finished());
+
+    drop(a);
+
+    writer.into_finish_swap();
 }
