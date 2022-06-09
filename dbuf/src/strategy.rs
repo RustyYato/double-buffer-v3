@@ -3,6 +3,8 @@
 mod local;
 #[cfg(feature = "alloc")]
 mod local_tracking;
+#[cfg(feature = "std")]
+mod tracking;
 
 pub use local::LocalStrategy;
 #[cfg(feature = "alloc")]
