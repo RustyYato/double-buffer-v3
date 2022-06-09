@@ -113,6 +113,12 @@ impl<W: WeakRef> Reader<W> {
     }
 }
 
+impl<W: WeakRef> Copy for Reader<W>
+where
+    W: Copy,
+    ReaderTagOf<StrategyOf<StrongOf<W>>>: Copy,
+{
+}
 impl<W: WeakRef> Clone for Reader<W> {
     fn clone(&self) -> Self {
         match W::upgrade(&self.ptr) {
