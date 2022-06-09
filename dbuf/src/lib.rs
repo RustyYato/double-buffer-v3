@@ -21,3 +21,7 @@ pub mod strategy;
 pub mod interface;
 
 pub mod delayed;
+#[cfg(feature = "alloc")]
+pub mod op;
+#[cfg(feature = "alloc")]
+pub mod op_log;

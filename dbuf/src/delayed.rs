@@ -72,9 +72,17 @@ impl<S: StrongRef> DelayedWriter<S> {
 
     /// check if the swap is finished
     pub fn is_swap_finished(&mut self) -> bool {
-        self.swap
-            .as_mut()
-            .map_or(true, |swap| self.writer.is_swap_finished(swap))
+        match self.swap.as_mut() {
+            None => true,
+            Some(swap) => {
+                if self.writer.is_swap_finished(swap) {
+                    self.swap = None;
+                    true
+                } else {
+                    false
+                }
+            }
+        }
     }
 }
 
