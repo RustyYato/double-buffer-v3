@@ -4,9 +4,15 @@
 #![forbid(
     clippy::undocumented_unsafe_blocks,
     unsafe_op_in_unsafe_fn,
-    clippy::missing_safety_doc,
-    clippy::missing_docs_in_private_items
+    clippy::missing_safety_doc
 )]
+#![deny(clippy::missing_docs_in_private_items)]
+
+#[cfg(feature = "alloc")]
+#[cfg(not(feature = "std"))]
+extern crate alloc as std;
+#[cfg(feature = "std")]
+extern crate std;
 
 pub mod raw;
 pub mod strategy;
