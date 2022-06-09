@@ -18,6 +18,12 @@ pub type WriterTag<S> = <S as Strategy>::WriterTag;
 pub type ReaderTag<S> = <S as Strategy>::ReaderTag;
 /// the boolean flag type of a strategy type
 pub type WhichOf<S> = <S as Strategy>::Which;
+/// the validation token type of a strategy type
+pub type ValidationTokenOf<S> = <S as Strategy>::ValidationToken;
+/// the validation error type of a strategy type
+pub type ValidationErrorOf<S> = <S as Strategy>::ValidationError;
+/// the capture type of a strategy type
+pub type CaptureOf<S> = <S as Strategy>::Capture;
 
 /// A conversion trait to a `StrongRef`.
 ///
@@ -82,7 +88,7 @@ pub unsafe trait WeakRef: Clone {
 ///
 /// # Safety
 ///
-/// * the two pointers returned from get are always valid
+/// * the two pointers returned from get are valid for reads and writes as long as `Self` is alive
 /// * they are disjoint
 /// * the data is not dereferenced
 pub unsafe trait RawBuffers {
@@ -105,6 +111,13 @@ pub unsafe trait Strategy {
     type ReaderTag;
     /// The type of boolean flag to use
     type Which: Which;
+
+    /// The validation token
+    type ValidationToken;
+    /// A validation error in case the readers can't exit the write buffer
+    type ValidationError: core::fmt::Debug;
+    /// A capture token which holds which readers are in the write buffer
+    type Capture;
 
     /// Creates a writer tag managed by this strategy
     ///
@@ -129,6 +142,30 @@ pub unsafe trait Strategy {
 
     /// Creates a reader tag not managed by this strategy out of thin air
     fn dangling_reader_tag() -> Self::ReaderTag;
+
+    /// Check if it's potentially safe to flip the buffers
+    fn validate_swap(
+        &self,
+        writer: &mut Self::WriterTag,
+    ) -> Result<Self::ValidationToken, Self::ValidationError>;
+
+    /// Capture the readers that are currently in the writer buffer
+    ///
+    /// # Safety
+    ///
+    /// * Must be called immediately after swapping the buffers
+    /// * the validation token must have come from a call to `validate_swap` right before swapping the buffers
+    unsafe fn capture_readers(
+        &self,
+        writer: &mut Self::WriterTag,
+        validation_token: Self::ValidationToken,
+    ) -> Self::Capture;
+
+    /// Check if all the readers captured at the specified capture point have exited
+    fn have_readers_exited(&self, writer: &Self::WriterTag, capture: &mut Self::Capture) -> bool;
+
+    /// Pause the current thread while waiting for readers to exit
+    fn pause(&self, writer: &Self::WriterTag) {}
 }
 
 /// A token for which buffer is on top
@@ -175,7 +212,5 @@ pub unsafe trait Which {
     fn load(&self) -> bool;
 
     /// Switch the two buffers
-    ///
-    /// returns the old value of the buffers
-    fn flip(&self) -> bool;
+    fn flip(&self);
 }

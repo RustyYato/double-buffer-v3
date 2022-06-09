@@ -138,9 +138,8 @@ unsafe impl Which for Flag {
         self.0.get()
     }
 
-    fn flip(&self) -> bool {
+    fn flip(&self) {
         self.0.set(!self.0.get());
-        !self.0.get()
     }
 }
 
@@ -168,7 +167,7 @@ unsafe impl Which for AtomicFlag {
         self.0.load(Ordering::Acquire)
     }
 
-    fn flip(&self) -> bool {
-        self.0.fetch_xor(true, Ordering::Release)
+    fn flip(&self) {
+        self.0.fetch_xor(true, Ordering::Release);
     }
 }
