@@ -124,6 +124,8 @@ pub unsafe trait Strategy {
     type Capture;
     /// The guard type that
     type ReaderGuard;
+    /// a type which can be used to add state to pause iterations
+    type Pause: Default;
 
     /// Creates a writer tag managed by this strategy
     ///
@@ -171,7 +173,7 @@ pub unsafe trait Strategy {
     fn have_readers_exited(&self, writer: &Self::WriterTag, capture: &mut Self::Capture) -> bool;
 
     /// Pause the current thread while waiting for readers to exit
-    fn pause(&self, _writer: &Self::WriterTag) {}
+    fn pause(&self, _writer: &Self::WriterTag, pause: &mut Self::Pause) {}
 
     /// begin a read guard, this locks the buffer and allows `capture_readers` to see which readers are actively reading
     ///

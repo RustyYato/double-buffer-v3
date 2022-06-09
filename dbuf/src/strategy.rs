@@ -9,3 +9,5 @@ mod tracking;
 pub use local::LocalStrategy;
 #[cfg(feature = "alloc")]
 pub use local_tracking::LocalTrackingStrategy;
+#[cfg(feature = "std")]
+pub use tracking::TrackingStrategy;

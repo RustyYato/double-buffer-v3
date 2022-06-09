@@ -54,6 +54,7 @@ unsafe impl Strategy for LocalStrategy {
     type ValidationError = ValidationError;
     type Capture = Capture;
     type ReaderGuard = ReaderGuard;
+    type Pause = ();
 
     #[inline]
     unsafe fn create_writer_tag(&self) -> Self::WriterTag {

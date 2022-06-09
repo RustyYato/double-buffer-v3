@@ -4,6 +4,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use std::{
     sync::{Arc, Condvar, Mutex, PoisonError},
     thread_local,
+    time::Duration,
     vec::Vec,
 };
 
@@ -70,6 +71,7 @@ unsafe impl Strategy for TrackingStrategy {
     type ValidationError = core::convert::Infallible;
     type Capture = Capture;
     type ReaderGuard = ReaderGuard;
+    type Pause = usize;
 
     #[inline]
     unsafe fn create_writer_tag(&self) -> Self::WriterTag {
@@ -158,13 +160,22 @@ unsafe impl Strategy for TrackingStrategy {
         self.cv.notify_one();
     }
 
-    fn pause(&self, _writer: &Self::WriterTag) {
+    fn pause(&self, _writer: &Self::WriterTag, pause: &mut usize) {
+        /// the max number of growth iterations
+        const MAX_ITERATIONS: usize = 20;
+        /// the maximum timeout
+        const MAX_TIMEOUT: Duration = Duration::from_secs(1);
+
+        let pause_time = *pause;
+        *pause += 1;
+        *pause = (*pause).min(MAX_ITERATIONS);
+
         let guard = self.readers.lock().unwrap_or_else(PoisonError::into_inner);
 
+        let timeout = MAX_TIMEOUT * (1 << pause_time) / (1 << MAX_ITERATIONS);
+
         #[allow(clippy::let_underscore_lock)]
-        let _ = self
-            .cv
-            .wait_timeout(guard, core::time::Duration::from_micros(100));
+        let _ = self.cv.wait_timeout(guard, timeout);
     }
 }
 

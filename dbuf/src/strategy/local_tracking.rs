@@ -75,6 +75,7 @@ unsafe impl Strategy for LocalTrackingStrategy {
     type ValidationError = core::convert::Infallible;
     type Capture = Capture;
     type ReaderGuard = ReaderGuard;
+    type Pause = ();
 
     #[inline]
     unsafe fn create_writer_tag(&self) -> Self::WriterTag {
