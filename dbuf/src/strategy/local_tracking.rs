@@ -138,7 +138,10 @@ unsafe impl Strategy for LocalTrackingStrategy {
 
     #[inline]
     unsafe fn begin_read_guard(&self, reader: &mut Self::ReaderTag) -> Self::ReaderGuard {
-        assert_eq!(reader.guard_index, usize::MAX);
+        assert!(
+            reader.guard_index == usize::MAX,
+            "detected a leaked read guard"
+        );
         assert_ne!(reader.index, usize::MAX);
         // SAFETY: begin_read_guard isn't reentrant or Sync so there can't be more than one `&mut` to active_readers
         let active_readers = unsafe { &mut *self.active_readers.as_ptr() };
