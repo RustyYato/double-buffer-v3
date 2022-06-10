@@ -1,6 +1,6 @@
 //! An operation based writer
 
-use std::convert::Infallible;
+use std::{convert::Infallible, ops::Deref};
 
 use crate::{
     delayed::DelayedWriter,
@@ -61,5 +61,13 @@ impl<S: StrongRef, O: Operation<BufferOf<RawBuffersOf<S>>>> OpWriter<S, O> {
         let writer = writer.split_mut().writer;
         self.op_log.apply(writer);
         self.writer.start_buffer_swap();
+    }
+}
+
+impl<S: StrongRef, O> Deref for OpWriter<S, O> {
+    type Target = Writer<S>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.writer
     }
 }

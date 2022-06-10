@@ -21,6 +21,17 @@ impl<S: Strategy, B: RawBuffers> Owned<S, B> {
     }
 }
 
+#[cfg(feature = "std")]
+impl<B> Owned<crate::strategy::TrackingStrategy, crate::raw::SizedRawDoubleBuffer<B>> {
+    /// create a new owned ptr
+    pub fn from_buffers(front: B, back: B) -> Self {
+        Self::new(Shared::new(
+            crate::strategy::TrackingStrategy::new(),
+            crate::raw::SizedRawDoubleBuffer::new(front, back),
+        ))
+    }
+}
+
 impl<S, B, W> TryFrom<Arc<Shared<S, B, W>>> for Owned<S, B, W> {
     type Error = Arc<Shared<S, B, W>>;
 
@@ -73,6 +84,12 @@ pub struct OwnedWeak<S, B, W = WhichOf<S>>(AWeak<Shared<S, B, W>>);
 
 /// The error representing a failed upgrade from OwnedWeak to OwnedStrong
 pub struct UpgradeError;
+
+impl core::fmt::Debug for UpgradeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("could upgrade OwnedWeak to OwnedStrong")
+    }
+}
 
 impl<S, B, W> Deref for OwnedStrong<S, B, W> {
     type Target = Shared<S, B, W>;
@@ -181,6 +198,12 @@ pub struct LocalOwnedWeak<S, B, W = WhichOf<S>>(Weak<Shared<S, B, W>>);
 /// The error representing a failed upgrade from LocalOwnedWeak to LocalOwnedStrong
 pub struct LocalUpgradeError;
 
+impl core::fmt::Debug for LocalUpgradeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("could upgrade LocalOwnedWeak to LocalOwnedStrong")
+    }
+}
+
 impl<S, B, W> Deref for LocalOwnedStrong<S, B, W> {
     type Target = Shared<S, B, W>;
 
@@ -225,4 +248,58 @@ unsafe impl<S: Strategy, B: RawBuffers> WeakRef for LocalOwnedWeak<S, B> {
             .ok_or(LocalUpgradeError)
             .map(LocalOwnedStrong)
     }
+}
+
+#[test]
+#[cfg(feature = "std")]
+fn test_op_writer() {
+    enum Op {
+        Add(i32),
+        Mul(i32),
+    }
+
+    impl crate::op_log::Operation<i32> for Op {
+        fn apply(&mut self, buffer: &mut i32) {
+            match self {
+                Op::Add(a) => *buffer += *a,
+                Op::Mul(a) => *buffer *= *a,
+            }
+        }
+    }
+
+    let shared = Owned::from_buffers(0, 0);
+    let writer = crate::raw::Writer::new(shared);
+    let mut writer = crate::op::OpWriter::from(writer);
+
+    writer.swap_buffers();
+
+    let mut reader = writer.reader();
+
+    assert_eq!(*reader.try_get().unwrap(), 0);
+
+    writer.apply(Op::Add(10));
+    writer.apply(Op::Mul(10));
+
+    assert_eq!(*reader.try_get().unwrap(), 0);
+    assert_eq!(*writer.split().writer, 0);
+    assert_eq!(*writer.split().reader, 0);
+
+    writer.swap_buffers();
+    writer.apply(Op::Add(10));
+
+    let mut reader2 = reader.clone();
+    let guard = reader2.try_get().unwrap();
+
+    assert_eq!(*reader.try_get().unwrap(), 100);
+    assert_eq!(*guard, 100);
+    assert_eq!(*writer.split().writer, 0);
+    assert_eq!(*writer.split().reader, 100);
+
+    writer.swap_buffers();
+
+    assert_eq!(*reader.try_get().unwrap(), 110);
+    assert_eq!(*guard, 100);
+    assert!(!core::ptr::eq::<i32>(&*guard, &*reader.try_get().unwrap()));
+    assert_eq!(*writer.split().writer, 100);
+    assert_eq!(*writer.split().reader, 110);
 }
