@@ -74,7 +74,7 @@ unsafe impl Strategy for TrackingStrategy {
     type Pause = usize;
 
     #[inline]
-    unsafe fn create_writer_tag(&self) -> Self::WriterTag {
+    unsafe fn create_writer_tag(&mut self) -> Self::WriterTag {
         WriterTag(())
     }
 

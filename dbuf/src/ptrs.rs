@@ -10,6 +10,15 @@ use crate::{
 unsafe impl<'a, S: Strategy, B: ?Sized + RawBuffers> IntoStrongRef for &'a mut Shared<S, B> {
     type Strong = &'a Shared<S, B>;
 
+    fn get_mut(
+        &mut self,
+    ) -> &mut Shared<
+        crate::interface::StrategyOf<Self::Strong>,
+        crate::interface::RawBuffersOf<Self::Strong>,
+    > {
+        self
+    }
+
     fn into_strong(self) -> Self::Strong {
         self
     }

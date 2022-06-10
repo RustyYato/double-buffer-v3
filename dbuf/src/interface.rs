@@ -2,6 +2,8 @@
 
 use core::ops::Deref;
 
+use crate::raw::Shared;
+
 /// the strong reference type of a given weak reference type
 pub type StrongOf<W> = <W as WeakRef>::Strong;
 /// the weak reference type of a given strong reference type
@@ -35,6 +37,9 @@ pub type CaptureOf<S> = <S as Strategy>::Capture;
 pub unsafe trait IntoStrongRef {
     /// The strong reference type being returned
     type Strong: StrongRef;
+
+    /// Get a mutable reference to the shared buffer
+    fn get_mut(&mut self) -> &mut Shared<StrategyOf<Self::Strong>, RawBuffersOf<Self::Strong>>;
 
     /// Creates a strong reference from a value
     fn into_strong(self) -> Self::Strong;
@@ -132,7 +137,7 @@ pub unsafe trait Strategy {
     /// # Safety
     ///
     /// FIXME
-    unsafe fn create_writer_tag(&self) -> Self::WriterTag;
+    unsafe fn create_writer_tag(&mut self) -> Self::WriterTag;
 
     /// Creates a reader tag managed by this strategy
     ///
@@ -173,7 +178,7 @@ pub unsafe trait Strategy {
     fn have_readers_exited(&self, writer: &Self::WriterTag, capture: &mut Self::Capture) -> bool;
 
     /// Pause the current thread while waiting for readers to exit
-    fn pause(&self, _writer: &Self::WriterTag, pause: &mut Self::Pause) {}
+    fn pause(&self, _writer: &Self::WriterTag, _pause: &mut Self::Pause) {}
 
     /// begin a read guard, this locks the buffer and allows `capture_readers` to see which readers are actively reading
     ///

@@ -43,15 +43,11 @@ pub struct Swap<C> {
 
 impl<S: StrongRef> Writer<S> {
     /// Create a new writer to the double buffer
-    pub fn new<T: IntoStrongRef<Strong = S>>(ptr: T) -> Self {
+    pub fn new<T: IntoStrongRef<Strong = S>>(mut ptr: T) -> Self {
+        // Safety: we just created a strong ref, so this is the first time create writer tag is called
+        let tag = unsafe { ptr.get_mut().strategy.create_writer_tag() };
         let ptr = ptr.into_strong();
-        let shared = &*ptr;
-        Self {
-            /// Safety: we just created a strong ref, so this is the first time
-            /// create writer tag is called
-            tag: unsafe { shared.strategy.create_writer_tag() },
-            ptr,
-        }
+        Self { tag, ptr }
     }
 
     /// Create a new reader to the double buffer

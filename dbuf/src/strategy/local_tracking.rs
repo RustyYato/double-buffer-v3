@@ -78,7 +78,7 @@ unsafe impl Strategy for LocalTrackingStrategy {
     type Pause = ();
 
     #[inline]
-    unsafe fn create_writer_tag(&self) -> Self::WriterTag {
+    unsafe fn create_writer_tag(&mut self) -> Self::WriterTag {
         WriterTag(())
     }
 
