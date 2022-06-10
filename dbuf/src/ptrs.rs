@@ -5,6 +5,9 @@ use crate::{
     raw::Shared,
 };
 
+#[cfg(feature = "alloc")]
+pub mod alloc;
+
 // SAFETY: the result of `into_strong` does not alias with any other pointer
 // because `&mut _` doesn't alias with any other pointer
 unsafe impl<'a, S: Strategy, B: ?Sized + RawBuffers> IntoStrongRef for &'a mut Shared<S, B> {
@@ -41,7 +44,6 @@ unsafe impl<S: Strategy, B: ?Sized + RawBuffers> StrongRef for &Shared<S, B> {
 }
 
 // SAFETY:
-// * `Deref::deref` cannot change which value it points to
 // * `WeakRef::upgrade(&StrongRef::downgrade(this))` must alias with `this` if
 //     `WeakRef::upgrade` returns `Ok`
 // * once `WeakRef::upgrade` returns `Err` it must always return `Err`

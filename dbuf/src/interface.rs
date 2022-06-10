@@ -33,7 +33,8 @@ pub type CaptureOf<S> = <S as Strategy>::Capture;
 ///
 /// # Safety
 ///
-/// the result of `into_strong` must not alias with any other pointer
+/// * the result of `into_strong` must not alias with any other pointer
+/// * the shared buffer in `get_mut` must be the same shared buffer returned from `<Self::Strong as Deref>::deref`
 pub unsafe trait IntoStrongRef {
     /// The strong reference type being returned
     type Strong: StrongRef;
@@ -77,7 +78,6 @@ pub unsafe trait StrongRef:
 ///
 /// # Safety
 ///
-/// * `Deref::deref` cannot change which value it points to
 /// * `WeakRef::upgrade(&StrongRef::downgrade(this))` must alias with `this` if
 ///     `WeakRef::upgrade` returns `Ok`
 /// * once `WeakRef::upgrade` returns `Err` it must always return `Err`
