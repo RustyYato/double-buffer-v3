@@ -16,6 +16,7 @@
 //! The key data structure is `ActiveReader` reproduced here
 //!
 //! ```
+//! # use core::sync::atomic::AtomicU32;
 //! struct ActiveReader {
 //!     next: *mut ActiveReader,
 //!     next_captured: *mut ActiveReader,
