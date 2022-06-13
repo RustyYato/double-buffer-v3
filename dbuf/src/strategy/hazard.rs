@@ -1,11 +1,9 @@
 #![allow(clippy::missing_docs_in_private_items)]
 
 use core::{
-    num::NonZeroU32,
     ptr,
     sync::atomic::{AtomicPtr, AtomicU32, Ordering},
 };
-use std::sync::atomic::AtomicU64;
 
 use crate::interface::Strategy;
 
@@ -17,8 +15,6 @@ use crate::interface::Strategy;
 pub struct HazardStrategy {
     /// the head of the append-only linked list of possibly active readers
     ptr: AtomicPtr<ActiveReader>,
-    /// the current reader index
-    reader_index: AtomicU32,
     /// the current generation
     generation: AtomicU32,
 }
@@ -27,11 +23,17 @@ pub struct HazardStrategy {
 struct ActiveReader {
     /// the next link in the list
     ///
+    /// iterating these links will yield the entire linked list.
+    ///
     /// if null => no next link
     /// if non-null => the next link
     next: *mut ActiveReader,
 
     /// the next link in the captured list
+    ///
+    /// iterating these links will yield a sub-sequence of the entire linked list
+    /// which holds only the nodes which are in the previous generation from the last
+    /// `capture_readers`.
     ///
     /// this field is owned by the writer, readers may not touch it
     ///
@@ -39,12 +41,8 @@ struct ActiveReader {
     /// if non-null => the next link
     next_captured: *mut ActiveReader,
 
-    /// both the reader index and generation of the reader
-    /// where the layout is:
-    /// [generation: u32, reader_index: u32]
-    ///
-    /// so we can use a single atomic instruction to access both
-    current: AtomicU64,
+    /// the generation that this active reader was acquried (or 0 of there isn't an active reader)
+    generation: AtomicU32,
 }
 
 impl HazardStrategy {
@@ -52,26 +50,20 @@ impl HazardStrategy {
     pub const fn new() -> Self {
         HazardStrategy {
             ptr: AtomicPtr::new(ptr::null_mut()),
-            reader_index: AtomicU32::new(0),
             generation: AtomicU32::new(1),
         }
     }
 
     /// create a new reader tag
     fn create_reader(&self) -> ReaderTag {
-        let id = NonZeroU32::new(1 + self.reader_index.fetch_add(1, Ordering::Relaxed))
-            .expect("overlowed the number of readers");
-        ReaderTag { id }
+        ReaderTag(())
     }
 }
 
 /// the writer tag for [`TrackingStrategy`]
 pub struct WriterTag(());
 /// the reader tag for [`TrackingStrategy`]
-pub struct ReaderTag {
-    /// the index of this reader tag
-    id: NonZeroU32,
-}
+pub struct ReaderTag(());
 /// the validation token for [`TrackingStrategy`]
 pub struct ValidationToken {
     /// the generation that we captured
@@ -126,9 +118,7 @@ unsafe impl Strategy for HazardStrategy {
     }
 
     fn dangling_reader_tag() -> Self::ReaderTag {
-        ReaderTag {
-            id: NonZeroU32::new(u32::MAX).unwrap(),
-        }
+        ReaderTag(())
     }
 
     fn validate_swap(
@@ -152,9 +142,9 @@ unsafe impl Strategy for HazardStrategy {
 
         // SAFETY: we never remove links from the linked list so the ptr is either null or valid
         while let Some(active_reader) = unsafe { ptr.as_ref() } {
-            let current = active_reader.current.load(Ordering::Acquire);
+            let current = active_reader.generation.load(Ordering::Acquire);
 
-            if (current >> 32) as u32 == generation {
+            if current == generation {
                 // set the first node that has a generation, then set start
                 if start.is_null() {
                     start = ptr;
@@ -201,11 +191,11 @@ unsafe impl Strategy for HazardStrategy {
             // SAFETY: we never remove links from the linked list so the ptr is either null or valid
             // end is a node later in the list or null so all nodes between are valid
             let active_reader = unsafe { &*ptr };
-            let current = active_reader.current.load(Ordering::Acquire);
+            let current = active_reader.generation.load(Ordering::Acquire);
 
             let next = active_reader.next_captured;
 
-            let reader_generation = (current >> 32) as u32;
+            let reader_generation = current;
 
             debug_assert!(
                 reader_generation == generation || reader_generation == generation.wrapping_add(1)
@@ -233,32 +223,19 @@ unsafe impl Strategy for HazardStrategy {
         have_readers_exited
     }
 
-    unsafe fn begin_read_guard(&self, reader: &mut Self::ReaderTag) -> Self::ReaderGuard {
-        /// see panic message
-        fn read_failed() -> ! {
-            panic!("Tried to re-insert this reader into the hazard pointer list, this should only be possible if the reader guard was leaked")
-        }
-
+    unsafe fn begin_read_guard(&self, _: &mut Self::ReaderTag) -> Self::ReaderGuard {
         let mut ptr = self.ptr.load(Ordering::Relaxed);
 
         let generation = self.generation.load(Ordering::Acquire);
 
-        let id = u64::from(reader.id.get()) | (u64::from(generation) << 32);
-
         // SAFETY: we never remove links from the linked list so the ptr is either null or valid
         while let Some(active_reader) = unsafe { ptr.as_ref() } {
-            match active_reader.current.compare_exchange(
-                0,
-                id,
-                Ordering::Release,
-                Ordering::Relaxed,
-            ) {
-                Ok(_) => return ReaderGuard(ptr),
-                Err(e) => {
-                    if e as u32 == reader.id.get() {
-                        read_failed();
-                    }
-                }
+            if active_reader
+                .generation
+                .compare_exchange(0, generation, Ordering::Release, Ordering::Relaxed)
+                .is_ok()
+            {
+                return ReaderGuard(ptr);
             }
 
             ptr = active_reader.next;
@@ -267,7 +244,7 @@ unsafe impl Strategy for HazardStrategy {
         let active_reader = Box::into_raw(Box::new(ActiveReader {
             next: ptr::null_mut(),
             next_captured: ptr::null_mut(),
-            current: AtomicU64::new(id),
+            generation: AtomicU32::new(generation),
         }));
 
         let mut ptr = self.ptr.load(Ordering::Acquire);
@@ -293,7 +270,7 @@ unsafe impl Strategy for HazardStrategy {
         // SAFETY: we never remove links from the linked list
         // and we only create valid links for `ReaderGuard`
         // so the link in the guard is still valid
-        unsafe { (*guard.0).current.store(0, Ordering::Release) }
+        unsafe { (*guard.0).generation.store(0, Ordering::Release) }
     }
 }
 
