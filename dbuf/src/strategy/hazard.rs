@@ -138,6 +138,7 @@ impl<W> HazardStrategy<W> {
 /// the writer tag for [`TrackingStrategy`]
 pub struct WriterTag(());
 /// the reader tag for [`TrackingStrategy`]
+#[derive(Clone, Copy)]
 pub struct ReaderTag(());
 /// the validation token for [`TrackingStrategy`]
 pub struct ValidationToken {
