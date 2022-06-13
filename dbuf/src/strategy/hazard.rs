@@ -19,7 +19,7 @@
 //! struct ActiveReader {
 //!     next: *mut ActiveReader,
 //!     next_captured: *mut ActiveReader,
-//!     current: AtomicU64,
+//!     generation: AtomicU32,
 //! }
 //! ```
 //!
@@ -28,14 +28,14 @@
 //! * The linked list when you follow the `next` pointer recursively is the entire linked list.
 //! * The linked list when you follow the `next_captured` pointer recursively is a sub-sequence of nodes which had
 //!     the previous generation when `capture_readers` was called.
-//! * `current` represents both the reader id and the generation it started reading on
+//! * `generation` represents both the generation it started reading on
 //!
 //! Upon insertion into the list, the `next` pointer is immutable and available for reads by the reader.
 //! The `next_captured` pointer is owned by the writer, and only the writer may access it.
-//! The `current` value is mutable and read/writable by readers and readably by writers.
+//! The `generation` value is mutable and read/writable by readers and readably by writers.
 //!
-//! `current` is either `0` or holds the pair `[generation]`. (where generation is guranteed
-//! to be an odd number).
+//! `generation` is either `0` or holds the `generation`. Where generation is guranteed
+//! to be an odd number.
 //! If it's `0` then the link is considered `EMPTY`.
 //!
 //! ### Reads
