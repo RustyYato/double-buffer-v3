@@ -22,7 +22,7 @@ pub struct Shared<S, B: ?Sized, W = WhichOf<S>> {
 
 impl<S: Strategy, B> Shared<S, B> {
     /// Create a new shared state to manage the double buffer
-    pub fn new(strategy: S, buffers: B) -> Self {
+    pub const fn new(strategy: S, buffers: B) -> Self {
         Self {
             strategy,
             which: Which::INIT,
