@@ -29,8 +29,16 @@ impl<S: StrongRef> DelayedWriter<S> {
 
     /// try to start a buffer swap
     pub fn try_start_buffer_swap(&mut self) -> Result<(), ValidationErrorOf<StrategyOf<S>>> {
+        if self.swap.is_some() {
+            return Ok(());
+        }
+
         // SAFETY: DelayedWriter doesn't expose a `&mut Writer` if there is an in progress swap
-        self.swap = Some(unsafe { self.writer.try_start_buffer_swap()? });
+        let swap = unsafe { self.writer.try_start_buffer_swap()? };
+
+        // SAFETY: it's always safe to write to a `&mut _`
+        unsafe { core::ptr::write(&mut self.swap, Some(swap)) };
+
         Ok(())
     }
 
@@ -57,7 +65,8 @@ impl<S: StrongRef> DelayedWriter<S> {
     /// finish an in progress buffer swap
     pub fn finish_swap(&mut self) -> &mut Writer<S> {
         if let Some(swap) = core::mem::take(&mut self.swap) {
-            self.writer.finish_swap(swap);
+            // SAFETY: this writer created the swap
+            unsafe { self.writer.finish_swap(swap) };
         }
 
         &mut self.writer
@@ -75,7 +84,8 @@ impl<S: StrongRef> DelayedWriter<S> {
         match self.swap.as_mut() {
             None => true,
             Some(swap) => {
-                if self.writer.is_swap_finished(swap) {
+                // SAFETY: this writer created the swap
+                if unsafe { self.writer.is_swap_finished(swap) } {
                     self.swap = None;
                     true
                 } else {

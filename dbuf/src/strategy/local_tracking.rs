@@ -126,7 +126,11 @@ unsafe impl Strategy for LocalTrackingStrategy {
         Capture(capture)
     }
 
-    fn have_readers_exited(&self, _writer: &Self::WriterTag, capture: &mut Self::Capture) -> bool {
+    unsafe fn have_readers_exited(
+        &self,
+        _writer: &Self::WriterTag,
+        capture: &mut Self::Capture,
+    ) -> bool {
         // SAFETY: have_readers_exited isn't reentrant or Sync so there can't be more than one `&mut` to active_readers
         let active_readers = unsafe { &mut *self.active_readers.as_ptr() };
 
@@ -191,10 +195,12 @@ fn test_local_tracking() {
     // SAFETY: we don't call any &mut self methods on writer any more
     let mut swap = unsafe { writer.try_start_buffer_swap() }.unwrap();
 
-    assert!(!writer.is_swap_finished(&mut swap));
+    // SAFETY: we created the swap above
+    assert!(!unsafe { writer.is_swap_finished(&mut swap) });
 
     drop(_a);
     let _a = reader2.get();
 
-    assert!(writer.is_swap_finished(&mut swap));
+    // SAFETY: we created the swap above
+    assert!(unsafe { writer.is_swap_finished(&mut swap) });
 }

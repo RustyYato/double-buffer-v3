@@ -98,7 +98,11 @@ unsafe impl Strategy for LocalStrategy {
     }
 
     #[inline]
-    fn have_readers_exited(&self, _writer: &Self::WriterTag, _capture: &mut Self::Capture) -> bool {
+    unsafe fn have_readers_exited(
+        &self,
+        _writer: &Self::WriterTag,
+        _capture: &mut Self::Capture,
+    ) -> bool {
         true
     }
 

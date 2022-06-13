@@ -175,7 +175,16 @@ pub unsafe trait Strategy {
     ) -> Self::Capture;
 
     /// Check if all the readers captured at the specified capture point have exited
-    fn have_readers_exited(&self, writer: &Self::WriterTag, capture: &mut Self::Capture) -> bool;
+    ///
+    /// # Safety
+    ///
+    /// The `WriterTag` and `Capture` should been created by `self`
+    /// The `WriterTag` should have been used to create `Capture`
+    unsafe fn have_readers_exited(
+        &self,
+        writer: &Self::WriterTag,
+        capture: &mut Self::Capture,
+    ) -> bool;
 
     /// Pause the current thread while waiting for readers to exit
     fn pause(&self, _writer: &Self::WriterTag, _pause: &mut Self::Pause) {}

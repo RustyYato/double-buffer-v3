@@ -102,7 +102,9 @@ impl<S: StrongRef> Writer<S> {
     pub fn try_swap_buffers(&mut self) -> Result<(), ValidationErrorOf<StrategyOf<S>>> {
         // SAFETY: we call `finish_swap`
         let swap = unsafe { self.try_start_buffer_swap()? };
-        self.finish_swap(swap);
+        // SAFETY: this swap was just created by this writer which means
+        // it was created by this strategy with this writer tag.
+        unsafe { self.finish_swap(swap) };
         Ok(())
     }
 
@@ -145,14 +147,26 @@ impl<S: StrongRef> Writer<S> {
     }
 
     /// Check if all readers have exited the write buffer
-    pub fn is_swap_finished(&self, swap: &mut Swap<CaptureOf<StrategyOf<S>>>) -> bool {
-        self.ptr
-            .strategy
-            .have_readers_exited(&self.tag, &mut swap.capture)
+    ///
+    /// # Safety
+    ///
+    /// the swap should have been created by `self`
+    pub unsafe fn is_swap_finished(&self, swap: &mut Swap<CaptureOf<StrategyOf<S>>>) -> bool {
+        // SAFETY: this swap was created by this writer which means
+        // it was created by this strategy with this writer tag.
+        unsafe {
+            self.ptr
+                .strategy
+                .have_readers_exited(&self.tag, &mut swap.capture)
+        }
     }
 
     /// Check if all readers have exited the write buffer
-    pub fn finish_swap(&self, mut swap: Swap<CaptureOf<StrategyOf<S>>>) {
+    ///
+    /// # Safety
+    ///
+    /// the swap should have been created by `self`
+    pub unsafe fn finish_swap(&self, mut swap: Swap<CaptureOf<StrategyOf<S>>>) {
         /// Drop slow to reduce the code size of `finish_swap`
         #[cold]
         #[inline(never)]
@@ -189,9 +203,13 @@ struct FinishSwapOnDrop<'a, S: Strategy, B: ?Sized> {
 impl<S: Strategy, B: ?Sized> FinishSwapOnDrop<'_, S, B> {
     /// is the given swap finished
     fn is_finished(&mut self) -> bool {
-        self.shared
-            .strategy
-            .have_readers_exited(self.tag, self.capture)
+        // SAFETY: this swap was created by this writer which created the `FinishSwapOnDrop`
+        // which means it was created by this strategy with this writer tag.
+        unsafe {
+            self.shared
+                .strategy
+                .have_readers_exited(self.tag, self.capture)
+        }
     }
 }
 
