@@ -256,3 +256,17 @@ pub unsafe trait Which {
     /// Switch the two buffers
     fn flip(&self);
 }
+
+/// A strategy for parking threads
+pub trait WaitStrategy {
+    /// A value which can be used to store state between subsequent calls to park
+    type State: Default;
+
+    /// park the current thread
+    ///
+    /// returns true if it has saturated (will not park for a longer period of time than the last)
+    fn wait(&self, park: &mut Self::State) -> bool;
+
+    /// unpark the one parked thread
+    fn notify(&self);
+}

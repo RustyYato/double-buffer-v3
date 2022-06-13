@@ -58,19 +58,25 @@ use core::{
     ptr,
     sync::atomic::{AtomicPtr, AtomicU32, Ordering},
 };
+use std::boxed::Box;
 
-use crate::interface::Strategy;
+use crate::{
+    interface::{Strategy, WaitStrategy},
+    park::DefaultParker,
+};
 
 /// A hazard pointer strategy
 ///
 /// a lock-free synchronization strategy
 ///
 /// see module level docs for details
-pub struct HazardStrategy {
+pub struct HazardStrategy<W = DefaultParker> {
     /// the head of the append-only linked list of possibly active readers
     ptr: AtomicPtr<ActiveReader>,
     /// the current generation
     generation: AtomicU32,
+    /// the waiting strategy
+    wait: W,
 }
 
 /// a link in the linked list of possibly active readers
@@ -101,10 +107,24 @@ struct ActiveReader {
 
 impl HazardStrategy {
     /// Create a new hazard strategy
-    pub const fn new() -> Self {
-        HazardStrategy {
+    pub fn new() -> Self {
+        Self::with_park_strategy(crate::park::DefaultParker::new())
+    }
+}
+
+impl<W: Default> Default for HazardStrategy<W> {
+    fn default() -> Self {
+        Self::with_park_strategy(W::default())
+    }
+}
+
+impl<W> HazardStrategy<W> {
+    /// Create a new [`HazardStrategy`] with the given [`WaitStrategy`]
+    pub const fn with_park_strategy(park: W) -> Self {
+        Self {
             ptr: AtomicPtr::new(ptr::null_mut()),
             generation: AtomicU32::new(1),
+            wait: park,
         }
     }
 
@@ -149,7 +169,7 @@ unsafe impl Send for ReaderGuard {}
 unsafe impl Sync for ReaderGuard {}
 
 // SAFETY: FIXME
-unsafe impl Strategy for HazardStrategy {
+unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
     type WriterTag = WriterTag;
     type ReaderTag = ReaderTag;
     type Which = crate::raw::AtomicFlag;
@@ -157,7 +177,7 @@ unsafe impl Strategy for HazardStrategy {
     type ValidationError = core::convert::Infallible;
     type Capture = Capture;
     type ReaderGuard = ReaderGuard;
-    type Pause = ();
+    type Pause = W::State;
 
     unsafe fn create_writer_tag(&mut self) -> Self::WriterTag {
         WriterTag(())
@@ -324,11 +344,17 @@ unsafe impl Strategy for HazardStrategy {
         // SAFETY: we never remove links from the linked list
         // and we only create valid links for `ReaderGuard`
         // so the link in the guard is still valid
-        unsafe { (*guard.0).generation.store(0, Ordering::Release) }
+        unsafe { (*guard.0).generation.store(0, Ordering::Release) };
+
+        self.wait.notify();
+    }
+
+    fn pause(&self, _writer: &Self::WriterTag, pause: &mut Self::Pause) {
+        self.wait.wait(pause);
     }
 }
 
-impl Drop for HazardStrategy {
+impl<W> Drop for HazardStrategy<W> {
     fn drop(&mut self) {
         let mut ptr = *self.ptr.get_mut();
 

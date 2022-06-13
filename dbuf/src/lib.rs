@@ -1,6 +1,6 @@
 //! an implementation of double buffers which is usable even in no_std contexts
 
-// #![no_std]
+#![no_std]
 #![forbid(
     clippy::undocumented_unsafe_blocks,
     unsafe_op_in_unsafe_fn,
@@ -14,6 +14,7 @@ extern crate alloc as std;
 #[cfg(feature = "std")]
 extern crate std;
 
+pub mod park;
 pub mod ptrs;
 pub mod raw;
 pub mod strategy;
