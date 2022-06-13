@@ -255,13 +255,16 @@ unsafe impl Strategy for LocalHazardStrategy {
             let reader_generation = current;
 
             debug_assert!(
-                reader_generation == generation || reader_generation == generation.wrapping_add(1)
+                reader_generation == 0
+                    || reader_generation == generation
+                    || reader_generation == generation.wrapping_add(1),
+                "invalid generation pair {generation} / {reader_generation}"
             );
 
-            if reader_generation == generation {
+            if reader_generation != generation {
                 *prev = next;
-                have_readers_exited = false;
             } else {
+                have_readers_exited = false;
                 // SAFETY: the `next_captured` field is only modified by the writer while we have either:
                 // * exclusive access to the writer tag or
                 // * exclusive access to the capture and shared access to the writer tag .
