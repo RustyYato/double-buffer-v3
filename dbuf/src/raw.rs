@@ -145,10 +145,12 @@ unsafe impl Which for Flag {
     #[allow(clippy::declare_interior_mutable_const)]
     const INIT: Self = Self(core::cell::Cell::new(false));
 
+    #[inline]
     fn load(&self) -> bool {
         self.0.get()
     }
 
+    #[inline]
     fn flip(&self) {
         self.0.set(!self.0.get());
     }
@@ -174,10 +176,12 @@ unsafe impl Which for AtomicFlag {
         unsafe { core::ptr::read(&self.0).into_inner() }
     }
 
+    #[inline]
     fn load(&self) -> bool {
         self.0.load(Ordering::Acquire)
     }
 
+    #[inline]
     fn flip(&self) {
         self.0.fetch_xor(true, Ordering::Release);
     }
