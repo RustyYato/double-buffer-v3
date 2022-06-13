@@ -168,6 +168,11 @@ unsafe impl Strategy for HazardStrategy {
     }
 
     unsafe fn begin_read_guard(&self, reader: &mut Self::ReaderTag) -> Self::ReaderGuard {
+        /// see panic message
+        fn read_failed() -> ! {
+            panic!("Tried to re-insert this reader into the hazard pointer list, this should only be possible if the reader guard was leaked")
+        }
+
         let mut ptr = self.ptr.load(Ordering::Relaxed);
 
         let generation = self.generation.load(Ordering::Acquire);
@@ -176,12 +181,18 @@ unsafe impl Strategy for HazardStrategy {
 
         // SAFETY: we never remove links from the linked list so the ptr is either null or valid
         while let Some(active_reader) = unsafe { ptr.as_ref() } {
-            if active_reader
-                .current
-                .compare_exchange(0, id, Ordering::Release, Ordering::Relaxed)
-                .is_ok()
-            {
-                return ReaderGuard(ptr);
+            match active_reader.current.compare_exchange(
+                0,
+                id,
+                Ordering::Release,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => return ReaderGuard(ptr),
+                Err(e) => {
+                    if e as u32 == reader.id.get() {
+                        read_failed();
+                    }
+                }
             }
 
             ptr = active_reader.next;
