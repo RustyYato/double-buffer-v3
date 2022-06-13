@@ -123,8 +123,9 @@ impl<S: StrongRef> Writer<S> {
     ///
     /// # Safety
     ///
-    /// You must either poll `is_swap_finished` or call `finish_swap` with the `swap`
-    /// before calling any other methods that take `&mut self`
+    /// You must either poll `is_swap_finished` until it returns true or
+    /// call `finish_swap` with the `swap` before calling any other methods
+    /// that take `&mut self`
     pub unsafe fn try_start_buffer_swap(
         &mut self,
     ) -> Result<Swap<CaptureOf<StrategyOf<S>>>, ValidationErrorOf<StrategyOf<S>>> {
@@ -135,8 +136,10 @@ impl<S: StrongRef> Writer<S> {
 
         // SAFETY:
         //
-        // * Must be called immediately after swapping the buffers
-        // * the validation token must have come from a call to `validate_swap` right before swapping the buffers
+        // * The validation token must have come from a call to `validate_swap` right before swapping the buffers
+        //      * we flip the buffers in between calling `validate_swap` and `capture_readers`
+        // * Must poll `have_readers_exited` until it returns true before calling `validate_swap` again
+        //      * guarnteed by caller
         let capture = unsafe {
             shared
                 .strategy

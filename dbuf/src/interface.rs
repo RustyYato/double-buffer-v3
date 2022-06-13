@@ -166,8 +166,8 @@ pub unsafe trait Strategy {
     ///
     /// # Safety
     ///
-    /// * Must be called immediately after swapping the buffers
-    /// * the validation token must have come from a call to `validate_swap` right before swapping the buffers
+    /// * The validation token must have come from a call to `validate_swap` right before swapping the buffers
+    /// * Must poll `have_readers_exited` until it returns true before calling `validate_swap` again
     unsafe fn capture_readers(
         &self,
         writer: &mut Self::WriterTag,
