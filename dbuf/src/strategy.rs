@@ -1,12 +1,12 @@
 //! various strategies for sycronizing a double buffer
 
 #[cfg(feature = "alloc")]
-mod hazard;
-mod local;
+pub mod hazard;
+pub mod local;
 #[cfg(feature = "alloc")]
-mod local_tracking;
+pub mod local_tracking;
 #[cfg(feature = "std")]
-mod tracking;
+pub mod tracking;
 
 #[cfg(feature = "alloc")]
 pub use hazard::HazardStrategy;
