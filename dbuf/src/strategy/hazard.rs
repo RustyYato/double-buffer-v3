@@ -9,18 +9,46 @@ use std::sync::atomic::AtomicU64;
 
 use crate::interface::Strategy;
 
+/// A hazard pointer strategy
+///
+/// a lock-free synchronization strategy
+///
+/// see module level docs for details
 pub struct HazardStrategy {
+    /// the head of the append-only linked list of possibly active readers
     ptr: AtomicPtr<ActiveReader>,
+    /// the current reader index
     reader_index: AtomicU32,
+    /// the current generation
     generation: AtomicU32,
 }
 
-pub struct ActiveReader {
+/// a link in the linked list of possibly active readers
+struct ActiveReader {
+    /// the next link in the list
+    ///
+    /// if null => no next link
+    /// if non-null => the next link
     next: *mut ActiveReader,
+
+    /// the next link in the captured list
+    ///
+    /// this field is owned by the writer, readers may not touch it
+    ///
+    /// if null => no next link
+    /// if non-null => the next link
+    next_captured: *mut ActiveReader,
+
+    /// both the reader index and generation of the reader
+    /// where the layout is:
+    /// [generation: u32, reader_index: u32]
+    ///
+    /// so we can use a single atomic instruction to access both
     current: AtomicU64,
 }
 
 impl HazardStrategy {
+    /// Create a new hazard strategy
     pub const fn new() -> Self {
         HazardStrategy {
             ptr: AtomicPtr::new(ptr::null_mut()),
@@ -29,6 +57,7 @@ impl HazardStrategy {
         }
     }
 
+    /// create a new reader tag
     fn create_reader(&self) -> ReaderTag {
         let id = NonZeroU32::new(1 + self.reader_index.fetch_add(1, Ordering::Relaxed))
             .expect("overlowed the number of readers");
@@ -47,7 +76,9 @@ pub struct ReaderTag {
 pub struct ValidationToken(());
 /// the capture token for [`TrackingStrategy`]
 pub struct Capture {
+    /// the captured generation
     generation: u32,
+    /// the latest active reader for that generation
     ptr: *mut ActiveReader,
 }
 /// the reader guard for [`TrackingStrategy`]
