@@ -204,7 +204,8 @@ pub unsafe trait Strategy {
     ///
     /// # Safety
     ///
-    /// the reader specified must have creatd the guard
+    /// * the reader must have been created by this strategy
+    /// * the reader specified must have created the guard
     unsafe fn end_read_guard(&self, reader: &mut Self::ReaderTag, guard: Self::ReaderGuard);
 }
 
