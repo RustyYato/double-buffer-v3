@@ -73,13 +73,16 @@ pub struct ReaderTag {
     id: NonZeroU32,
 }
 /// the validation token for [`TrackingStrategy`]
-pub struct ValidationToken(());
+pub struct ValidationToken {
+    /// the generation that we captured
+    generation: u32,
+}
 /// the capture token for [`TrackingStrategy`]
 pub struct Capture {
     /// the captured generation
     generation: u32,
     /// the latest active reader for that generation
-    ptr: *mut ActiveReader,
+    start: *mut ActiveReader,
 }
 /// the reader guard for [`TrackingStrategy`]
 pub struct ReaderGuard(*mut ActiveReader);
@@ -132,39 +135,102 @@ unsafe impl Strategy for HazardStrategy {
         &self,
         _: &mut Self::WriterTag,
     ) -> Result<Self::ValidationToken, Self::ValidationError> {
-        Ok(ValidationToken(()))
+        let generation = self.generation.fetch_add(2, Ordering::AcqRel);
+
+        Ok(ValidationToken { generation })
     }
 
     unsafe fn capture_readers(
         &self,
         _: &mut Self::WriterTag,
-        _: Self::ValidationToken,
+        ValidationToken { generation }: Self::ValidationToken,
     ) -> Self::Capture {
-        let generation = self.generation.fetch_add(2, Ordering::Relaxed);
-
-        let ptr = self.ptr.load(Ordering::Acquire);
-
-        Capture { generation, ptr }
-    }
-
-    unsafe fn have_readers_exited(&self, _: &Self::WriterTag, capture: &mut Self::Capture) -> bool {
-        // SAFETY: this ptr is guarnteed to be a sublist of `self.ptr.load(_)`
-        // because we got it in `capture_readers`
-        let mut ptr: *const ActiveReader = capture.ptr;
-        let generation = capture.generation;
+        let head = self.ptr.load(Ordering::Acquire);
+        let mut ptr = head;
+        let mut start = ptr::null_mut::<ActiveReader>();
+        let mut prev = head;
 
         // SAFETY: we never remove links from the linked list so the ptr is either null or valid
         while let Some(active_reader) = unsafe { ptr.as_ref() } {
             let current = active_reader.current.load(Ordering::Acquire);
 
             if (current >> 32) as u32 == generation {
-                return false;
+                // set the first node that has a generation, then set start
+                if start.is_null() {
+                    start = ptr;
+                } else {
+                    // SAFETY: the `next_captured` field is only modified by the writer while we have either:
+                    // * exclusive access to the writer tag or
+                    // * exclusive access to the capture and shared access to the writer tag .
+                    //
+                    // Since we have exclusive access to the writer tag right now, we can't race with `have_readers_exited`
+                    // because that has shared access to the writer tag.
+                    unsafe { (*prev).next_captured = ptr }
+                }
+
+                prev = ptr;
             }
 
             ptr = active_reader.next;
         }
 
-        true
+        // SAFETY: the `next_captured` field is only modified by the writer while we have either:
+        // * exclusive access to the writer tag or
+        // * exclusive access to the capture and shared access to the writer tag .
+        //
+        // Since we have exclusive access to the writer tag right now, we can't race with `have_readers_exited`
+        // because that has shared access to the writer tag.
+        unsafe { (*prev).next_captured = ptr::null_mut() }
+
+        Capture {
+            generation,
+            start: head,
+        }
+    }
+
+    unsafe fn have_readers_exited(&self, _: &Self::WriterTag, capture: &mut Self::Capture) -> bool {
+        // SAFETY: this ptr is guarnteed to be a sublist of `self.ptr.load(_)`
+        // because we got it in `capture_readers`
+        let mut ptr = capture.start;
+        let generation = capture.generation;
+        let mut prev = &mut capture.start;
+
+        let mut have_readers_exited = true;
+
+        while !ptr.is_null() {
+            // SAFETY: we never remove links from the linked list so the ptr is either null or valid
+            // end is a node later in the list or null so all nodes between are valid
+            let active_reader = unsafe { &*ptr };
+            let current = active_reader.current.load(Ordering::Acquire);
+
+            let next = active_reader.next_captured;
+
+            let reader_generation = (current >> 32) as u32;
+
+            debug_assert!(
+                reader_generation == generation || reader_generation == generation.wrapping_add(1)
+            );
+
+            if reader_generation == generation {
+                *prev = next;
+                have_readers_exited = false;
+            } else {
+                // SAFETY: the `next_captured` field is only modified by the writer while we have either:
+                // * exclusive access to the writer tag or
+                // * exclusive access to the capture and shared access to the writer tag .
+                //
+                // Since we have shared access to the writer tag right now, we can't race with `capture_readers`
+                // because that has exclusive access to the writer tag.
+                // Since we have exclusvie access to the capture and there can't be more than one in-progress swap,
+                // at a time, we can't race with `have_readers_exited`. So it's fine to get an exclusive reference
+                // to `next_captured`.
+                prev = unsafe { &mut (*ptr).next_captured };
+            }
+
+            ptr = next;
+        }
+
+        have_readers_exited
     }
 
     unsafe fn begin_read_guard(&self, reader: &mut Self::ReaderTag) -> Self::ReaderGuard {
@@ -200,6 +266,7 @@ unsafe impl Strategy for HazardStrategy {
 
         let active_reader = Box::into_raw(Box::new(ActiveReader {
             next: ptr::null_mut(),
+            next_captured: ptr::null_mut(),
             current: AtomicU64::new(id),
         }));
 
