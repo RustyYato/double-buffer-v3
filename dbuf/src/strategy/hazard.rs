@@ -211,6 +211,14 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
         ValidationToken { generation }: Self::ValidationToken,
     ) -> Self::Capture {
         let head = self.ptr.load(Ordering::Acquire);
+
+        if head.is_null() {
+            return Capture {
+                generation: 0,
+                start: ptr::null_mut(),
+            };
+        }
+
         let mut ptr = head;
         let mut start = ptr::null_mut::<ActiveReader>();
         let mut prev = head;
