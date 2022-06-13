@@ -113,6 +113,18 @@ impl<W: WeakRef> Reader<W> {
             Err(inf) => match inf {},
         }
     }
+
+    /// Clones the reader without attemping to upgrade the pointer
+    pub fn copy_tag(&self) -> Self
+    where
+        W: Clone,
+        ReaderTagOf<StrategyOf<StrongOf<W>>>: Copy,
+    {
+        Self {
+            tag: self.tag,
+            ptr: self.ptr.clone(),
+        }
+    }
 }
 
 impl<W: WeakRef> Copy for Reader<W>
@@ -135,6 +147,39 @@ impl<W: WeakRef> Clone for Reader<W> {
                 // Safety: this reader tag will never be used because the writer is dead
                 unsafe { Self::from_raw_parts(tag, self.ptr.clone()) }
             }
+        }
+    }
+}
+
+impl<'a, S: StrongRef, B: ?Sized> ReadGuard<'a, S, B> {
+    /// Map the contained type
+    pub fn map<T: ?Sized>(self, f: impl FnOnce(&B) -> &T) -> ReadGuard<'a, S, T> {
+        // SAFETY: the raw guard ensure that the writer can't write to this buffer
+        let ptr = f(unsafe { self.buffer.ptr.as_ref() });
+
+        ReadGuard {
+            buffer: SharedRef {
+                ptr: NonNull::from(ptr),
+            },
+            _raw: self._raw,
+        }
+    }
+
+    /// Map the contained type
+    pub fn try_map<T: ?Sized>(
+        self,
+        f: impl FnOnce(&B) -> Option<&T>,
+    ) -> Result<ReadGuard<'a, S, T>, Self> {
+        // SAFETY: the raw guard ensure that the writer can't write to this buffer
+        if let Some(ptr) = f(unsafe { self.buffer.ptr.as_ref() }) {
+            Ok(ReadGuard {
+                buffer: SharedRef {
+                    ptr: NonNull::from(ptr),
+                },
+                _raw: self._raw,
+            })
+        } else {
+            Err(self)
         }
     }
 }
