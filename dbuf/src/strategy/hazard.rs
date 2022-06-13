@@ -1,4 +1,58 @@
-#![allow(clippy::missing_docs_in_private_items)]
+//! A hazard pointer strategy
+//!
+//! ## Basic overview:
+//!
+//! The [`HazardStrategy`] keeps track of the current generation, which
+//! let's us know when the reader acquired a read guard (more on this later).
+//! Each time we swap the buffers, we increment the generation and capture
+//! the current sub-sequence of readers that are in the previous generation.
+//!
+//! We then iterate over this sub-sequence and remove readers as they exit the buffer.
+//!
+//! Once all readers have been removed, then we have finished the swap.
+//!
+//! ## Implementation Details
+//!
+//! The key data structure is `ActiveReader` reproduced here
+//!
+//! ```
+//! struct ActiveReader {
+//!     next: *mut ActiveReader,
+//!     next_captured: *mut ActiveReader,
+//!     current: AtomicU64,
+//! }
+//! ```
+//!
+//! This structure is a node in two linked lists.
+//!
+//! * The linked list when you follow the `next` pointer recursively is the entire linked list.
+//! * The linked list when you follow the `next_captured` pointer recursively is a sub-sequence of nodes which had
+//!     the previous generation when `capture_readers` was called.
+//! * `current` represents both the reader id and the generation it started reading on
+//!
+//! Upon insertion into the list, the `next` pointer is immutable and available for reads by the reader.
+//! The `next_captured` pointer is owned by the writer, and only the writer may access it.
+//! The `current` value is mutable and read/writable by readers and readably by writers.
+//!
+//! `current` is either `0` or holds the pair `[generation]`. (where generation is guranteed
+//! to be an odd number).
+//! If it's `0` then the link is considered `EMPTY`.
+//!
+//! ### Reads
+//!
+//! When a reader tries to acquire a read guard, it will find the first non-empty node and put itself there.
+//! Then the `ReaderGuard` will point to that node, so when the guard ends, it can simply empty out the node
+//! without iterating over the list.
+//!
+//! ### Swaps
+//!
+//! When the writer wants to swap
+//! * the [`HazardStrategy`] will increment the generation counter (by 2 to stay odd)
+//! * the writer will swap the buffers
+//! * the [`HazardStrategy`] iterate over the entire list and setup the `next_captured` sub-sequence of
+//! readers which are still in the previous generation.
+//! * while this subsequence is non-empty the [`HazardStrategy`] will iterate over the sub-sequence and remove
+//! elements from the sub-sequence which have are `EMPTY` or not in the same generation.
 
 use core::{
     ptr,
