@@ -165,7 +165,7 @@ unsafe impl Strategy for LocalTrackingStrategy {
 
     #[cold]
     fn pause(&self, _writer: &Self::WriterTag, _pause: &mut Self::Pause) {
-        panic!("cannot pause a local tracking strategy")
+        panic!("cannot swap buffers using local tracking strategy while there are readers in the buffer")
     }
 }
 

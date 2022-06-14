@@ -312,7 +312,9 @@ unsafe impl Strategy for LocalHazardStrategy {
 
     #[cold]
     fn pause(&self, _writer: &Self::WriterTag, _pause: &mut Self::Pause) {
-        panic!("cannot pause a local hazard strategy")
+        panic!(
+            "cannot swap buffers using local hazard strategy while there are readers in the buffer"
+        )
     }
 }
 
