@@ -7,7 +7,7 @@ use std::{
     ops::Deref,
 };
 
-type Waiter = dbuf::wait::NoopWait;
+type Waiter = dbuf::wait::DefaultWait;
 
 pub struct CMap<K, V, S = RandomState> {
     #[allow(clippy::type_complexity)]
