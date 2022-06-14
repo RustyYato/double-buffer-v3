@@ -64,9 +64,12 @@ impl<S: StrongRef> DelayedWriter<S> {
 
     /// finish an in progress buffer swap
     pub fn finish_swap(&mut self) -> &mut Writer<S> {
-        if let Some(swap) = core::mem::take(&mut self.swap) {
+        if self.swap.is_some() {
+            let mut pause = Default::default();
             // SAFETY: this writer created the swap
-            unsafe { self.writer.finish_swap(swap) };
+            while !self.is_swap_finished() {
+                self.writer.pause(&mut pause)
+            }
         }
 
         &mut self.writer

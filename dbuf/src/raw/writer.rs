@@ -1,8 +1,8 @@
 //! the writer to a double buffer
 
 use crate::interface::{
-    BufferOf, CaptureOf, IntoStrongRef, RawBuffers, RawBuffersOf, Strategy, StrategyOf, StrongRef,
-    ValidationErrorOf, WeakOf, Which, WriterTag,
+    BufferOf, CaptureOf, IntoStrongRef, PauseOf, RawBuffers, RawBuffersOf, Strategy, StrategyOf,
+    StrongRef, ValidationErrorOf, WeakOf, Which, WriterTag,
 };
 
 use super::Reader;
@@ -190,6 +190,11 @@ impl<S: StrongRef> Writer<S> {
         }
 
         core::mem::forget(swap);
+    }
+
+    /// Pause the current thread according to the strategy
+    pub fn pause(&self, pause: &mut PauseOf<StrategyOf<S>>) {
+        self.ptr.strategy.pause(&self.tag, pause)
     }
 }
 

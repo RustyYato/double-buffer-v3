@@ -28,6 +28,8 @@ pub type ValidationTokenOf<S> = <S as Strategy>::ValidationToken;
 pub type ValidationErrorOf<S> = <S as Strategy>::ValidationError;
 /// the capture type of a strategy type
 pub type CaptureOf<S> = <S as Strategy>::Capture;
+/// The pause state type for a strategy type
+pub type PauseOf<S> = <S as Strategy>::Pause;
 
 /// A conversion trait to a `StrongRef`.
 ///
