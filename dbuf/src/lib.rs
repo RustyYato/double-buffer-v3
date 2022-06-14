@@ -14,10 +14,10 @@ extern crate alloc as std;
 #[cfg(feature = "std")]
 extern crate std;
 
-pub mod park;
 pub mod ptrs;
 pub mod raw;
 pub mod strategy;
+pub mod wait;
 
 pub mod interface;
 

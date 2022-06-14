@@ -4,9 +4,9 @@ use crate::interface::WaitStrategy;
 
 #[derive(Default)]
 /// This parker will do nothing on park
-pub struct NoopPark;
+pub struct NoopWait;
 
-impl WaitStrategy for NoopPark {
+impl WaitStrategy for NoopWait {
     type State = ();
 
     fn wait(&self, (): &mut Self::State) -> bool {
@@ -18,9 +18,9 @@ impl WaitStrategy for NoopPark {
 
 #[derive(Default)]
 /// This parker will do nothing on park
-pub struct SpinParker;
+pub struct SpinWait;
 
-impl WaitStrategy for SpinParker {
+impl WaitStrategy for SpinWait {
     type State = u32;
 
     fn wait(&self, counter: &mut Self::State) -> bool {
@@ -87,13 +87,13 @@ impl WaitStrategy for ThreadParker {
 
 /// This parker will do nothing on park
 #[cfg(feature = "std")]
-pub struct AdaptiveParker {
+pub struct AdaptiveWait {
     ///
     thread: ThreadParker,
 }
 
 #[cfg(feature = "std")]
-impl AdaptiveParker {
+impl AdaptiveWait {
     /// create a new adaptive parker
     pub fn new() -> Self {
         Self {
@@ -103,18 +103,18 @@ impl AdaptiveParker {
 }
 
 #[cfg(feature = "std")]
-impl Default for AdaptiveParker {
+impl Default for AdaptiveWait {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[cfg(feature = "std")]
-impl WaitStrategy for AdaptiveParker {
+impl WaitStrategy for AdaptiveWait {
     type State = u32;
 
     fn wait(&self, counter: &mut Self::State) -> bool {
-        if SpinParker.wait(counter) {
+        if SpinWait.wait(counter) {
             self.thread.wait(&mut ());
 
             true
@@ -129,36 +129,36 @@ impl WaitStrategy for AdaptiveParker {
 }
 
 /// This parker will do nothing on park
-pub struct DefaultParker {
+pub struct DefaultWait {
     /// the inner parker type
     #[cfg(feature = "std")]
-    adaptive: AdaptiveParker,
+    adaptive: AdaptiveWait,
 }
 
-impl DefaultParker {
+impl DefaultWait {
     /// create a new default parker
     pub fn new() -> Self {
         Self {
             #[cfg(feature = "std")]
-            adaptive: AdaptiveParker::new(),
+            adaptive: AdaptiveWait::new(),
         }
     }
 }
 
 #[cfg(feature = "std")]
-impl Default for DefaultParker {
+impl Default for DefaultWait {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[cfg(feature = "std")]
-impl WaitStrategy for DefaultParker {
+impl WaitStrategy for DefaultWait {
     type State = u32;
 
     fn wait(&self, counter: &mut Self::State) -> bool {
         #[cfg(not(feature = "std"))]
-        SpinParker.park(counter);
+        SpinWait.park(counter);
         #[cfg(feature = "std")]
         self.adaptive.wait(counter)
     }

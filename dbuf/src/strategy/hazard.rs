@@ -63,7 +63,7 @@ use std::boxed::Box;
 
 use crate::{
     interface::{Strategy, WaitStrategy},
-    park::DefaultParker,
+    wait::DefaultWait,
 };
 
 /// A hazard pointer strategy
@@ -71,7 +71,7 @@ use crate::{
 /// a lock-free synchronization strategy
 ///
 /// see module level docs for details
-pub struct HazardStrategy<W = DefaultParker> {
+pub struct HazardStrategy<W = DefaultWait> {
     /// the head of the append-only linked list of possibly active readers
     ptr: AtomicPtr<ActiveReader>,
     /// the current generation
@@ -109,7 +109,7 @@ struct ActiveReader {
 impl HazardStrategy {
     /// Create a new hazard strategy
     pub fn new() -> Self {
-        Self::with_park_strategy(crate::park::DefaultParker::new())
+        Self::with_park_strategy(crate::wait::DefaultWait::new())
     }
 }
 
