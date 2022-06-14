@@ -147,24 +147,24 @@ impl<W> HazardStrategy<W> {
     }
 }
 
-/// the writer tag for [`TrackingStrategy`]
+/// the writer tag for [`HazardStrategy`]
 pub struct WriterTag(());
-/// the reader tag for [`TrackingStrategy`]
+/// the reader tag for [`HazardStrategy`]
 #[derive(Clone, Copy)]
 pub struct ReaderTag(());
-/// the validation token for [`TrackingStrategy`]
+/// the validation token for [`HazardStrategy`]
 pub struct ValidationToken {
     /// the generation that we captured
     generation: u32,
 }
-/// the capture token for [`TrackingStrategy`]
+/// the capture token for [`HazardStrategy`]
 pub struct Capture {
     /// the captured generation
     generation: u32,
     /// the latest active reader for that generation
     start: *mut ActiveReader,
 }
-/// the reader guard for [`TrackingStrategy`]
+/// the reader guard for [`HazardStrategy`]
 pub struct ReaderGuard(*mut ActiveReader);
 
 // SAFETY: Capture follows the normal rules for data access
@@ -484,7 +484,7 @@ mod test {
 
             loom::thread::spawn(move || {
                 let a = reader.get();
-                let a = &*a;
+                let _a = &*a;
 
                 loom::thread::yield_now();
             });
@@ -493,7 +493,7 @@ mod test {
 
             loom::thread::spawn(move || {
                 let a = reader.get();
-                let a = &*a;
+                let _a = &*a;
 
                 loom::thread::yield_now();
             });

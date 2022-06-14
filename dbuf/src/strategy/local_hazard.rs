@@ -2,7 +2,7 @@
 //!
 //! ## Basic overview:
 //!
-//! The [`HazardStrategy`] keeps track of the current generation, which
+//! The [`LocalHazardStrategy`] keeps track of the current generation, which
 //! let's us know when the reader acquired a read guard (more on this later).
 //! Each time we swap the buffers, we increment the generation and capture
 //! the current sub-sequence of readers that are in the previous generation.
@@ -16,11 +16,11 @@
 //! The key data structure is `ActiveReader` reproduced here
 //!
 //! ```
-//! # use core::sync::atomic::AtomicU32;
+//! # use core::cell::Cell;
 //! struct ActiveReader {
 //!     next: *mut ActiveReader,
 //!     next_captured: *mut ActiveReader,
-//!     generation: AtomicU32,
+//!     generation: Cell<u32>,
 //! }
 //! ```
 //!
@@ -48,11 +48,11 @@
 //! ### Swaps
 //!
 //! When the writer wants to swap
-//! * the [`HazardStrategy`] will increment the generation counter (by 2 to stay odd)
+//! * the [`LocalHazardStrategy`] will increment the generation counter (by 2 to stay odd)
 //! * the writer will swap the buffers
-//! * the [`HazardStrategy`] iterate over the entire list and setup the `next_captured` sub-sequence of
+//! * the [`LocalHazardStrategy`] iterate over the entire list and setup the `next_captured` sub-sequence of
 //! readers which are still in the previous generation.
-//! * while this subsequence is non-empty the [`HazardStrategy`] will iterate over the sub-sequence and remove
+//! * while this subsequence is non-empty the [`LocalHazardStrategy`] will iterate over the sub-sequence and remove
 //! elements from the sub-sequence which have are `EMPTY` or not in the same generation.
 
 use core::{cell::Cell, ptr};
@@ -119,21 +119,21 @@ impl Default for LocalHazardStrategy {
     }
 }
 
-/// the writer tag for [`TrackingStrategy`]
+/// the writer tag for [`LocalHazardStrategy`]
 pub struct WriterTag(());
-/// the reader tag for [`TrackingStrategy`]
+/// the reader tag for [`LocalHazardStrategy`]
 #[derive(Clone, Copy)]
 pub struct ReaderTag(());
-/// the validation token for [`TrackingStrategy`]
+/// the validation token for [`LocalHazardStrategy`]
 pub struct ValidationToken(());
-/// the capture token for [`TrackingStrategy`]
+/// the capture token for [`LocalHazardStrategy`]
 pub struct Capture {
     /// the captured generation
     generation: u32,
     /// the latest active reader for that generation
     start: *mut ActiveReader,
 }
-/// the reader guard for [`TrackingStrategy`]
+/// the reader guard for [`LocalHazardStrategy`]
 pub struct ReaderGuard(*mut ActiveReader);
 
 // SAFETY: FIXME
