@@ -12,7 +12,7 @@ type Waiter = dbuf::wait::DefaultWait;
 pub struct CMap<K, V, S = RandomState> {
     #[allow(clippy::type_complexity)]
     inner: dbuf::op::OpWriter<
-        dbuf::ptrs::alloc::OwnedStrong<
+        dbuf::ptrs::alloc::OwnedPtr<
             dbuf::strategy::HazardStrategy<Waiter>,
             dbuf::raw::SizedRawDoubleBuffer<HashMap<K, V, S>>,
         >,
@@ -23,7 +23,7 @@ pub struct CMap<K, V, S = RandomState> {
 pub struct CMapReader<K, V, S = RandomState> {
     #[allow(clippy::type_complexity)]
     inner: dbuf::raw::Reader<
-        dbuf::ptrs::alloc::OwnedWeak<
+        dbuf::ptrs::alloc::OwnedPtr<
             dbuf::strategy::HazardStrategy<Waiter>,
             dbuf::raw::SizedRawDoubleBuffer<HashMap<K, V, S>>,
         >,
@@ -34,7 +34,7 @@ pub struct CMapReadGuard<'a, K, V, S, T: ?Sized = HashMap<K, V, S>> {
     #[allow(clippy::type_complexity)]
     inner: dbuf::raw::ReadGuard<
         'a,
-        dbuf::ptrs::alloc::OwnedStrong<
+        dbuf::ptrs::alloc::OwnedPtr<
             dbuf::strategy::HazardStrategy<Waiter>,
             dbuf::raw::SizedRawDoubleBuffer<HashMap<K, V, S>>,
         >,
@@ -103,12 +103,9 @@ impl<K, V, S> CMap<K, V, S> {
 
     pub fn from_maps(front: HashMap<K, V, S>, back: HashMap<K, V, S>) -> Self {
         Self {
-            inner: dbuf::op::OpWriter::from(dbuf::raw::Writer::new(dbuf::ptrs::alloc::Owned::new(
-                dbuf::raw::Shared::new(
-                    dbuf::strategy::HazardStrategy::default(),
-                    dbuf::raw::SizedRawDoubleBuffer::new(front, back),
-                ),
-            ))),
+            inner: dbuf::op::OpWriter::from(dbuf::raw::Writer::new(
+                dbuf::ptrs::alloc::Owned::from_buffers(front, back),
+            )),
         }
     }
 }
@@ -144,10 +141,19 @@ impl<K, V, S> Clone for CMapReader<K, V, S> {
 }
 
 impl<K, V, S> CMapReader<K, V, S> {
-    pub fn load(&mut self) -> Result<CMapReadGuard<K, V, S>, dbuf::ptrs::alloc::UpgradeError> {
-        Ok(CMapReadGuard {
-            inner: self.inner.try_get()?,
-        })
+    pub fn load(&mut self) -> CMapReadGuard<K, V, S> {
+        CMapReadGuard {
+            inner: self.inner.get(),
+        }
+    }
+
+    pub fn get<Q>(&mut self, key: &Q) -> Option<CMapReadGuard<K, V, S, V>>
+    where
+        Q: ?Sized + Hash + Eq,
+        K: Hash + Eq + Borrow<Q>,
+        S: BuildHasher,
+    {
+        self.load().try_map(|map| map.get(key)).ok()
     }
 }
 
@@ -156,5 +162,29 @@ impl<K, V, S, T: ?Sized> Deref for CMapReadGuard<'_, K, V, S, T> {
 
     fn deref(&self) -> &Self::Target {
         &self.inner
+    }
+}
+
+impl<'a, K, V, S, T: ?Sized> CMapReadGuard<'a, K, V, S, T> {
+    pub fn map<U: ?Sized>(self, f: impl FnOnce(&T) -> &U) -> CMapReadGuard<'a, K, V, S, U> {
+        CMapReadGuard {
+            inner: dbuf::raw::ReadGuard::map(self.inner, f),
+        }
+    }
+
+    pub fn try_map<U: ?Sized>(
+        self,
+        f: impl FnOnce(&T) -> Option<&U>,
+    ) -> Result<CMapReadGuard<'a, K, V, S, U>, Self> {
+        match dbuf::raw::ReadGuard::try_map(self.inner, f) {
+            Ok(inner) => Ok(CMapReadGuard { inner }),
+            Err(inner) => Err(CMapReadGuard { inner }),
+        }
+    }
+}
+
+impl<K, V, S, T: ?Sized + core::fmt::Debug> core::fmt::Debug for CMapReadGuard<'_, K, V, S, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        T::fmt(self, f)
     }
 }
