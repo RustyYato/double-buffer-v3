@@ -102,9 +102,16 @@ impl<S: StrongRef> Writer<S> {
     pub fn try_swap_buffers(&mut self) -> Result<(), ValidationErrorOf<StrategyOf<S>>> {
         // SAFETY: we call `finish_swap`
         let swap = unsafe { self.try_start_buffer_swap()? };
+
         // SAFETY: this swap was just created by this writer which means
         // it was created by this strategy with this writer tag.
-        unsafe { self.finish_swap(swap) };
+        unsafe {
+            let mut guard =
+                scopeguard::guard((self, swap), |(this, mut swap)| this.finish_swap(&mut swap));
+            let (this, swap) = &mut *guard;
+
+            this.finish_swap(swap)
+        };
         Ok(())
     }
 
@@ -169,63 +176,21 @@ impl<S: StrongRef> Writer<S> {
     /// # Safety
     ///
     /// the swap should have been created by `self`
-    pub unsafe fn finish_swap(&self, mut swap: Swap<CaptureOf<StrategyOf<S>>>) {
-        /// Drop slow to reduce the code size of `finish_swap`
-        #[cold]
-        #[inline(never)]
-        fn drop_slow<T>(_: T) {}
-
-        let mut swap = FinishSwapOnDrop {
-            tag: &self.tag,
-            shared: &self.ptr,
-            capture: &mut swap.capture,
-        };
-
-        if !swap.is_finished() {
-            drop_slow(FinishSwapOnDrop {
-                tag: swap.tag,
-                shared: swap.shared,
-                capture: swap.capture,
-            })
-        }
-
-        core::mem::forget(swap);
-    }
-
-    /// Pause the current thread according to the strategy
-    pub fn pause(&self, pause: &mut PauseOf<StrategyOf<S>>) {
-        self.ptr.strategy.pause(&self.tag, pause)
-    }
-}
-
-/// A guard to ensure that the swap is finished before exiting `finish_swap`
-struct FinishSwapOnDrop<'a, S: Strategy, B: ?Sized> {
-    /// the writer associated with this swap
-    tag: &'a WriterTag<S>,
-    /// the shared buffer for this swap
-    shared: &'a super::Shared<S, B>,
-    /// the capture token for this swap
-    capture: &'a mut CaptureOf<S>,
-}
-
-impl<S: Strategy, B: ?Sized> FinishSwapOnDrop<'_, S, B> {
-    /// is the given swap finished
-    fn is_finished(&mut self) -> bool {
-        // SAFETY: this swap was created by this writer which created the `FinishSwapOnDrop`
-        // which means it was created by this strategy with this writer tag.
-        unsafe {
-            self.shared
-                .strategy
-                .have_readers_exited(self.tag, self.capture)
+    pub unsafe fn finish_swap(&self, swap: &mut Swap<CaptureOf<StrategyOf<S>>>) {
+        // SAFETY: guaranteed by caller
+        if !unsafe { self.is_swap_finished(swap) } {
+            self.finish_swap_slow(swap)
         }
     }
-}
 
-impl<S: Strategy, B: ?Sized> Drop for FinishSwapOnDrop<'_, S, B> {
-    fn drop(&mut self) {
+    #[cold]
+    #[inline(never)]
+    /// Drop slow to reduce the code size of `finish_swap`
+    fn finish_swap_slow(&self, swap: &mut Swap<CaptureOf<StrategyOf<S>>>) {
         let mut pause = Default::default();
-        while !self.is_finished() {
-            self.shared.strategy.pause(self.tag, &mut pause)
+        // SAFETY: guaranteed by caller
+        while !unsafe { self.is_swap_finished(swap) } {
+            self.ptr.strategy.pause(&self.tag, &mut pause)
         }
     }
 }

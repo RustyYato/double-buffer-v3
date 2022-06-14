@@ -27,6 +27,23 @@ impl<S: StrongRef> DelayedWriter<S> {
         DelayedWriter { writer, swap: None }
     }
 
+    /// try to swap the buffers
+    pub fn try_swap_buffers(&mut self) -> Result<&mut Writer<S>, ValidationErrorOf<StrategyOf<S>>> {
+        self.finish_swap();
+        self.try_start_buffer_swap()?;
+        Ok(self.finish_swap())
+    }
+
+    /// swap the buffers
+    pub fn swap_buffers(&mut self) -> &mut Writer<S>
+    where
+        StrategyOf<S>: Strategy<ValidationError = core::convert::Infallible>,
+    {
+        self.finish_swap();
+        self.start_buffer_swap();
+        self.finish_swap()
+    }
+
     /// try to start a buffer swap
     pub fn try_start_buffer_swap(&mut self) -> Result<(), ValidationErrorOf<StrategyOf<S>>> {
         if self.swap.is_some() {
@@ -64,12 +81,9 @@ impl<S: StrongRef> DelayedWriter<S> {
 
     /// finish an in progress buffer swap
     pub fn finish_swap(&mut self) -> &mut Writer<S> {
-        if self.swap.is_some() {
-            let mut pause = Default::default();
+        if let Some(ref mut swap) = self.swap {
             // SAFETY: this writer created the swap
-            while !self.is_swap_finished() {
-                self.writer.pause(&mut pause)
-            }
+            unsafe { self.writer.finish_swap(swap) }
         }
 
         &mut self.writer
