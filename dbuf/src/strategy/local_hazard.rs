@@ -285,7 +285,8 @@ unsafe impl Strategy for LocalHazardStrategy {
 
     #[inline]
     unsafe fn begin_read_guard(&self, _: &mut Self::ReaderTag) -> Self::ReaderGuard {
-        let mut ptr = self.ptr.get();
+        let head = self.ptr.get();
+        let mut ptr = head;
         let generation = self.generation.get();
 
         // SAFETY: we never remove links from the linked list so the ptr is either null or valid
@@ -298,15 +299,7 @@ unsafe impl Strategy for LocalHazardStrategy {
             ptr = active_reader.next;
         }
 
-        let ptr = Box::into_raw(Box::new(ActiveReader {
-            next: self.ptr.get(),
-            next_captured: ptr::null_mut(),
-            generation: Cell::new(generation),
-        }));
-
-        self.ptr.set(ptr);
-
-        ReaderGuard(ptr)
+        self.begin_read_guard_slow(head, generation)
     }
 
     #[inline]
@@ -315,6 +308,24 @@ unsafe impl Strategy for LocalHazardStrategy {
         // and we only create valid links for `ReaderGuard`
         // so the link in the guard is still valid
         unsafe { (*guard.0).generation.set(0) };
+    }
+}
+
+impl LocalHazardStrategy {
+    /// The slow path of begin_read_guard which neeeds to allocate
+    /// this should only happen if there are many readers aquiring
+    /// for a read guard at the same time
+    #[cold]
+    fn begin_read_guard_slow(&self, head: *mut ActiveReader, generation: u32) -> ReaderGuard {
+        let ptr = Box::into_raw(Box::new(ActiveReader {
+            next: head,
+            next_captured: ptr::null_mut(),
+            generation: Cell::new(generation),
+        }));
+
+        self.ptr.set(ptr);
+
+        ReaderGuard(ptr)
     }
 }
 
