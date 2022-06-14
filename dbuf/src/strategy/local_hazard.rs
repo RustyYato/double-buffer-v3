@@ -309,6 +309,11 @@ unsafe impl Strategy for LocalHazardStrategy {
         // so the link in the guard is still valid
         unsafe { (*guard.0).generation.set(0) };
     }
+
+    #[cold]
+    fn pause(&self, _writer: &Self::WriterTag, _pause: &mut Self::Pause) {
+        panic!("cannot pause a local hazard strategy")
+    }
 }
 
 impl LocalHazardStrategy {

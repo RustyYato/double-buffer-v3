@@ -162,6 +162,11 @@ unsafe impl Strategy for LocalTrackingStrategy {
         assert_eq!(index, reader.index);
         reader.guard_index = usize::MAX;
     }
+
+    #[cold]
+    fn pause(&self, _writer: &Self::WriterTag, _pause: &mut Self::Pause) {
+        panic!("cannot pause a local tracking strategy")
+    }
 }
 
 #[test]
