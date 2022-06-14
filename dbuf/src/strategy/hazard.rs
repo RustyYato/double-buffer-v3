@@ -323,7 +323,7 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
     }
 
     unsafe fn begin_read_guard(&self, _: &mut Self::ReaderTag) -> Self::ReaderGuard {
-        let mut ptr = self.ptr.load(Ordering::Relaxed);
+        let mut ptr = self.ptr.load(Ordering::Acquire);
 
         let generation = self.generation.load(Ordering::Acquire);
 
@@ -355,7 +355,7 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
             if let Err(curr) = self.ptr.compare_exchange_weak(
                 ptr,
                 active_reader,
-                Ordering::Acquire,
+                Ordering::Release,
                 Ordering::Relaxed,
             ) {
                 ptr = curr
@@ -471,14 +471,23 @@ mod test {
             let mut reader = writer.reader();
 
             loom::thread::spawn(move || {
-                writer.swap_buffers();
+                let a = reader.get();
+                let a = &*a;
+
                 loom::thread::yield_now();
             });
+
+            let mut reader = writer.reader();
 
             loom::thread::spawn(move || {
                 let a = reader.get();
                 let a = &*a;
 
+                loom::thread::yield_now();
+            });
+
+            loom::thread::spawn(move || {
+                writer.swap_buffers();
                 loom::thread::yield_now();
             });
         })
