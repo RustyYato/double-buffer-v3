@@ -1,8 +1,8 @@
 //! the writer to a double buffer
 
 use crate::interface::{
-    BufferOf, CaptureOf, IntoStrongRef, PauseOf, RawBuffers, RawBuffersOf, Strategy, StrategyOf,
-    StrongRef, ValidationErrorOf, WeakOf, Which, WriterTag,
+    BufferOf, CaptureOf, IntoStrongRef, RawBuffers, RawBuffersOf, Strategy, StrategyOf, StrongRef,
+    ValidationErrorOf, WeakOf, Which, WriterTag,
 };
 
 use super::Reader;

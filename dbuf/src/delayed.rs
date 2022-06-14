@@ -84,6 +84,7 @@ impl<S: StrongRef> DelayedWriter<S> {
         if let Some(ref mut swap) = self.swap {
             // SAFETY: this writer created the swap
             unsafe { self.writer.finish_swap(swap) }
+            self.swap = None;
         }
 
         &mut self.writer
