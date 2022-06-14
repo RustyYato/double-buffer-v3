@@ -362,7 +362,7 @@ mod test {
 
         let split_mut = writer.split_mut();
         *split_mut.writer = 10;
-        let mut reader2 = reader.clone();
+        let mut reader2 = reader;
         let a = reader.get();
 
         let mut writer = crate::delayed::DelayedWriter::from(writer);

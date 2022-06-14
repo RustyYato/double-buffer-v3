@@ -182,9 +182,9 @@ pub struct AtomicFlag(AtomicBool);
 /// * `flip` must syncronize with `load`, i.e. all `flip`s must have a happens before relation with `load`
 ///     * `flip` uses `Ordering::Release` which syncronizes with `load`'s `Ordering::Acquire` to create a happens before relation
 unsafe impl Which for AtomicFlag {
-    #[allow(clippy::declare_interior_mutable_const)]
     #[cfg(feature = "loom")]
     const INIT: Self = panic!("use the new function");
+    #[allow(clippy::declare_interior_mutable_const)]
     #[cfg(not(feature = "loom"))]
     const INIT: Self = Self(AtomicBool::new(false));
 

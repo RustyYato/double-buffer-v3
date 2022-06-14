@@ -54,11 +54,11 @@ impl<S, B, W> TryFrom<Arc<Shared<S, B, W>>> for OwnedWithWeak<S, B, W> {
     }
 }
 
+#[cfg(not(feature = "loom"))]
 // SAFETY:
 //
 // * the result of `into_strong` must not alias with any other pointer
 // * the shared buffer in `get_mut` must be the same shared buffer returned from `<Self::Strong as Deref>::deref`
-#[cfg(not(feature = "loom"))]
 unsafe impl<S: Strategy, B: RawBuffers> IntoStrongRef for OwnedWithWeak<S, B> {
     type Strong = OwnedStrong<S, B>;
 
@@ -122,13 +122,13 @@ impl<S, B, W> Clone for OwnedWeak<S, B, W> {
     }
 }
 
+#[cfg(not(feature = "loom"))]
 // SAFETY:
 //
 // * `Deref::deref` cannot change which value it points to
 // * `WeakRef::upgrade(&StrongRef::downgrade(this))` must alias with `this` if
 //     `WeakRef::upgrade` returns `Ok`
 /// * moving the strong ref shouldn't invalidate pointers to inside the strong ref
-#[cfg(not(feature = "loom"))]
 unsafe impl<S: Strategy, B: RawBuffers> StrongRef for OwnedStrong<S, B> {
     type RawBuffers = B;
     type Strategy = S;
@@ -139,12 +139,12 @@ unsafe impl<S: Strategy, B: RawBuffers> StrongRef for OwnedStrong<S, B> {
     }
 }
 
+#[cfg(not(feature = "loom"))]
 // SAFETY:
 //
 /// * `WeakRef::upgrade(&StrongRef::downgrade(this))` must alias with `this` if
 ///     `WeakRef::upgrade` returns `Ok`
 /// * once `WeakRef::upgrade` returns `Err` it must always return `Err`
-#[cfg(not(feature = "loom"))]
 unsafe impl<S: Strategy, B: RawBuffers> WeakRef for OwnedWeak<S, B> {
     type Strong = OwnedStrong<S, B>;
     type UpgradeError = UpgradeError;
