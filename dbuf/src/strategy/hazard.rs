@@ -362,6 +362,7 @@ impl<W> HazardStrategy<W> {
     /// The slow path of begin_read_guard which neeeds to allocate
     /// this should only happen if there are many readers aquiring
     /// for a read guard at the same time
+    #[cold]
     fn begin_read_guard_slow(&self, generation: u32) -> ReaderGuard {
         let active_reader = Box::into_raw(Box::new(ActiveReader {
             next: ptr::null_mut(),
