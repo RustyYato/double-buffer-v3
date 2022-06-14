@@ -3,7 +3,7 @@
 use crate::interface::WaitStrategy;
 
 #[derive(Default)]
-/// This parker will do nothing on park
+/// This waiter will do nothing on wait
 pub struct NoopWait;
 
 impl WaitStrategy for NoopWait {
@@ -17,7 +17,7 @@ impl WaitStrategy for NoopWait {
 }
 
 #[derive(Default)]
-/// This parker will do nothing on park
+/// This waiter will spin using exponential backoff
 pub struct SpinWait;
 
 impl WaitStrategy for SpinWait {
@@ -37,7 +37,7 @@ impl WaitStrategy for SpinWait {
     fn notify(&self) {}
 }
 
-/// This parker will do nothing on park
+/// This waiter will park the thread on wait
 #[cfg(feature = "std")]
 pub struct ThreadParker {
     ///
@@ -86,7 +86,7 @@ impl WaitStrategy for ThreadParker {
     }
 }
 
-/// This parker will do nothing on park
+/// This waiter will spin for using exponential backoff, then park the thread
 #[cfg(feature = "std")]
 pub struct AdaptiveWait {
     ///
@@ -95,7 +95,7 @@ pub struct AdaptiveWait {
 
 #[cfg(feature = "std")]
 impl AdaptiveWait {
-    /// create a new adaptive parker
+    /// create a new adaptive waiter
     pub fn new() -> Self {
         Self {
             thread: ThreadParker::new(),
@@ -130,7 +130,9 @@ impl WaitStrategy for AdaptiveWait {
     }
 }
 
-/// This parker will do nothing on park
+/// This waiter will spin for using exponential backoff, then park the thread
+///
+/// This behavior is subject to change
 pub struct DefaultWait {
     /// the inner parker type
     #[cfg(feature = "std")]
@@ -138,7 +140,7 @@ pub struct DefaultWait {
 }
 
 impl DefaultWait {
-    /// create a new default parker
+    /// create a new default waiter
     pub fn new() -> Self {
         Self {
             #[cfg(feature = "std")]
