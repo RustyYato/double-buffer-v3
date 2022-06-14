@@ -415,6 +415,7 @@ impl<W> Drop for HazardStrategy<W> {
 mod test {
 
     #[test]
+    #[cfg_attr(feature = "loom", ignore = "when using loom: ignore normal tests")]
     fn test_local_tracking() {
         let mut shared = crate::raw::Shared::new(
             super::HazardStrategy::new(),

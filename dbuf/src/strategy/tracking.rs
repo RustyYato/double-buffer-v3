@@ -219,6 +219,7 @@ fn _test_bounds() {
 }
 
 #[test]
+#[cfg_attr(feature = "loom", ignore = "when using loom: ignore normal tests")]
 fn test_local_tracking() {
     let mut shared = crate::raw::Shared::new(
         TrackingStrategy::new(),
