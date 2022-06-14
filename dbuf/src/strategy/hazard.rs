@@ -296,7 +296,7 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
             debug_assert!(
                 reader_generation == 0
                     || reader_generation == generation
-                    || reader_generation == generation.wrapping_add(1),
+                    || reader_generation == generation.wrapping_add(2),
                 "invalid generation pair {generation} / {reader_generation}"
             );
 
