@@ -7,6 +7,8 @@ use std::{
 
 use sync_wrapper::SyncWrapper;
 
+use crate::split::Split;
+
 type Waiter = dbuf::wait::DefaultWait;
 
 pub struct CMap<K, V, S = RandomState> {
@@ -50,13 +52,13 @@ pub enum MapOp<K, V, S> {
     Clear,
 }
 
-impl<K: Hash + Eq + Clone, V: Clone, S: BuildHasher> dbuf::op_log::Operation<HashMap<K, V, S>>
+impl<K: Hash + Eq + Split, V: Split, S: BuildHasher> dbuf::op_log::Operation<HashMap<K, V, S>>
     for MapOp<K, V, S>
 {
     fn apply(&mut self, buffer: &mut HashMap<K, V, S>) {
         match self {
             MapOp::Insert(key, value) => {
-                buffer.insert(key.clone(), value.clone());
+                buffer.insert(key.split(), value.split());
             }
             MapOp::Remove(key) => {
                 buffer.remove(key);
@@ -92,10 +94,10 @@ impl<K, V, S: Default> Default for CMap<K, V, S> {
     }
 }
 
-impl<K, V, S: Clone> CMap<K, V, S> {
-    pub fn with_hasher(hasher: S) -> Self {
+impl<K, V, S: Split> CMap<K, V, S> {
+    pub fn with_hasher(mut hasher: S) -> Self {
         Self::from_maps(
-            HashMap::with_hasher(hasher.clone()),
+            HashMap::with_hasher(hasher.split()),
             HashMap::with_hasher(hasher),
         )
     }
@@ -121,7 +123,7 @@ impl<K, V, S> CMap<K, V, S> {
     }
 }
 
-impl<K: Hash + Eq + Clone, V: Clone, S: BuildHasher> CMap<K, V, S> {
+impl<K: Hash + Eq + Split, V: Split, S: BuildHasher> CMap<K, V, S> {
     pub fn insert(&mut self, key: K, value: V) {
         self.inner.apply(MapOp::Insert(key, value));
     }
