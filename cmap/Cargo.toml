@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 dbuf = { path = '../dbuf', features = ['alloc'] }
+sync_wrapper = '0.1.1'

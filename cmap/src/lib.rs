@@ -7,6 +7,8 @@ use std::{
     ops::Deref,
 };
 
+use sync_wrapper::SyncWrapper;
+
 type Waiter = dbuf::wait::DefaultWait;
 
 pub struct CMap<K, V, S = RandomState> {
@@ -16,7 +18,7 @@ pub struct CMap<K, V, S = RandomState> {
             dbuf::strategy::HazardStrategy<Waiter>,
             dbuf::raw::SizedRawDoubleBuffer<HashMap<K, V, S>>,
         >,
-        MapOp<K, V>,
+        MapOp<K, V, S>,
     >,
 }
 
@@ -42,13 +44,16 @@ pub struct CMapReadGuard<'a, K, V, S, T: ?Sized = HashMap<K, V, S>> {
     >,
 }
 
-pub enum MapOp<K, V> {
+pub enum MapOp<K, V, S> {
     Insert(K, V),
     Remove(K),
+    #[allow(clippy::type_complexity)]
+    Arbitrary(SyncWrapper<Box<dyn FnMut(bool, &mut HashMap<K, V, S>) + Send>>),
+    Clear,
 }
 
 impl<K: Hash + Eq + Clone, V: Clone, S: BuildHasher> dbuf::op_log::Operation<HashMap<K, V, S>>
-    for MapOp<K, V>
+    for MapOp<K, V, S>
 {
     fn apply(&mut self, buffer: &mut HashMap<K, V, S>) {
         match self {
@@ -58,6 +63,8 @@ impl<K: Hash + Eq + Clone, V: Clone, S: BuildHasher> dbuf::op_log::Operation<Has
             MapOp::Remove(key) => {
                 buffer.remove(key);
             }
+            MapOp::Arbitrary(f) => f.get_mut()(false, buffer),
+            MapOp::Clear => buffer.clear(),
         }
     }
 
@@ -69,6 +76,8 @@ impl<K: Hash + Eq + Clone, V: Clone, S: BuildHasher> dbuf::op_log::Operation<Has
             MapOp::Remove(ref key) => {
                 buffer.remove(key);
             }
+            MapOp::Arbitrary(f) => f.into_inner()(true, buffer),
+            MapOp::Clear => buffer.clear(),
         }
     }
 }
@@ -108,6 +117,10 @@ impl<K, V, S> CMap<K, V, S> {
             )),
         }
     }
+
+    pub fn load(&self) -> &HashMap<K, V, S> {
+        self.inner.split().reader
+    }
 }
 
 impl<K: Hash + Eq + Clone, V: Clone, S: BuildHasher> CMap<K, V, S> {
@@ -125,6 +138,16 @@ impl<K: Hash + Eq + Clone, V: Clone, S: BuildHasher> CMap<K, V, S> {
         K: Borrow<Q>,
     {
         self.inner.split().reader.get(key)
+    }
+
+    pub fn clear(&mut self) {
+        self.inner.apply(MapOp::Clear)
+    }
+
+    pub fn retain(&mut self, mut f: impl FnMut(bool, &K, &mut V) -> bool + Send + 'static) {
+        self.inner.apply(MapOp::Arbitrary(SyncWrapper::new(Box::new(
+            move |is_first, map| map.retain(|k, v| f(is_first, k, v)),
+        ))))
     }
 
     pub fn flush(&mut self) {
