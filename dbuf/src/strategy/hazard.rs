@@ -322,6 +322,7 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
         have_readers_exited
     }
 
+    #[inline]
     unsafe fn begin_read_guard(&self, _: &mut Self::ReaderTag) -> Self::ReaderGuard {
         let mut ptr = self.ptr.load(Ordering::Acquire);
 
@@ -340,6 +341,28 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
             ptr = active_reader.next;
         }
 
+        self.begin_read_guard_slow(generation)
+    }
+
+    unsafe fn end_read_guard(&self, _: &mut Self::ReaderTag, guard: Self::ReaderGuard) {
+        // SAFETY: we never remove links from the linked list
+        // and we only create valid links for `ReaderGuard`
+        // so the link in the guard is still valid
+        unsafe { (*guard.0).generation.store(0, Ordering::Release) };
+
+        self.wait.notify();
+    }
+
+    fn pause(&self, _writer: &Self::WriterTag, pause: &mut Self::Pause) {
+        self.wait.wait(pause);
+    }
+}
+
+impl<W> HazardStrategy<W> {
+    /// The slow path of begin_read_guard which neeeds to allocate
+    /// this should only happen if there are many readers aquiring
+    /// for a read guard at the same time
+    fn begin_read_guard_slow(&self, generation: u32) -> ReaderGuard {
         let active_reader = Box::into_raw(Box::new(ActiveReader {
             next: ptr::null_mut(),
             next_captured: ptr::null_mut(),
@@ -363,19 +386,6 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
                 break ReaderGuard(active_reader);
             }
         }
-    }
-
-    unsafe fn end_read_guard(&self, _: &mut Self::ReaderTag, guard: Self::ReaderGuard) {
-        // SAFETY: we never remove links from the linked list
-        // and we only create valid links for `ReaderGuard`
-        // so the link in the guard is still valid
-        unsafe { (*guard.0).generation.store(0, Ordering::Release) };
-
-        self.wait.notify();
-    }
-
-    fn pause(&self, _writer: &Self::WriterTag, pause: &mut Self::Pause) {
-        self.wait.wait(pause);
     }
 }
 
