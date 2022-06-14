@@ -7,7 +7,7 @@ edition = "2021"
 
 [features]
 
-default = ['std', 'loom']
+default = ['std']
 
 std = ['alloc']
 alloc = ['slab']
