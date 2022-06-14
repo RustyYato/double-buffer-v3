@@ -68,6 +68,7 @@ impl Default for ThreadParker {
 impl WaitStrategy for ThreadParker {
     type State = ();
 
+    #[cold]
     fn wait(&self, _: &mut Self::State) -> bool {
         let lock = self
             .mutex
@@ -113,6 +114,7 @@ impl Default for AdaptiveWait {
 impl WaitStrategy for AdaptiveWait {
     type State = u32;
 
+    #[cold]
     fn wait(&self, counter: &mut Self::State) -> bool {
         if SpinWait.wait(counter) {
             self.thread.wait(&mut ());
@@ -156,6 +158,7 @@ impl Default for DefaultWait {
 impl WaitStrategy for DefaultWait {
     type State = u32;
 
+    #[inline]
     fn wait(&self, counter: &mut Self::State) -> bool {
         #[cfg(not(feature = "std"))]
         SpinWait.park(counter);
