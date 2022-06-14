@@ -1,8 +1,11 @@
 //! the raw building blocks of a double buffer
 
-use core::{cell::UnsafeCell, ptr, sync::atomic::Ordering};
-
 use crate::interface::{RawBuffers, Strategy, Which, WhichOf};
+#[cfg(not(feature = "loom"))]
+use core::sync::atomic::{AtomicBool, Ordering};
+use core::{cell::UnsafeCell, ptr};
+#[cfg(feature = "loom")]
+use loom::sync::atomic::{AtomicBool, Ordering};
 
 mod reader;
 mod writer;
@@ -22,10 +25,21 @@ pub struct Shared<S, B: ?Sized, W = WhichOf<S>> {
 
 impl<S: Strategy, B> Shared<S, B> {
     /// Create a new shared state to manage the double buffer
+    #[cfg(not(feature = "loom"))]
     pub const fn new(strategy: S, buffers: B) -> Self {
         Self {
             strategy,
             which: Which::INIT,
+            buffers,
+        }
+    }
+
+    /// Create a new shared state to manage the double buffer
+    #[cfg(feature = "loom")]
+    pub fn new(strategy: S, buffers: B) -> Self {
+        Self {
+            strategy,
+            which: Which::new(),
             buffers,
         }
     }
@@ -157,7 +171,7 @@ unsafe impl Which for Flag {
 }
 
 /// A thread-safe flag
-pub struct AtomicFlag(core::sync::atomic::AtomicBool);
+pub struct AtomicFlag(AtomicBool);
 
 // SAFETY:
 //
@@ -169,11 +183,27 @@ pub struct AtomicFlag(core::sync::atomic::AtomicBool);
 ///     * `flip` uses `Ordering::Release` which syncronizes with `load`'s `Ordering::Acquire` to create a happens before relation
 unsafe impl Which for AtomicFlag {
     #[allow(clippy::declare_interior_mutable_const)]
-    const INIT: Self = Self(core::sync::atomic::AtomicBool::new(false));
+    #[cfg(feature = "loom")]
+    const INIT: Self = panic!("use the new function");
+    #[cfg(not(feature = "loom"))]
+    const INIT: Self = Self(AtomicBool::new(false));
+
+    #[cfg(feature = "loom")]
+    fn new() -> Self {
+        Self(AtomicBool::new(false))
+    }
 
     unsafe fn load_unsync(&self) -> bool {
+        #[cfg(feature = "loom")]
         // SAFETY: load unsync guarantees that this read won't race with flip
-        unsafe { core::ptr::read(&self.0).into_inner() }
+        unsafe {
+            self.0.unsync_load()
+        }
+        #[cfg(not(feature = "loom"))]
+        // SAFETY: load unsync guarantees that this read won't race with flip
+        unsafe {
+            core::ptr::read(&self.0).into_inner()
+        }
     }
 
     #[inline]

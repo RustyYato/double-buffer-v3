@@ -1,10 +1,11 @@
 //! ptrs that need to allocate
 
-use std::{
-    ops::Deref,
-    rc::{Rc, Weak},
-    sync::{Arc, Weak as AWeak},
-};
+use core::ops::Deref;
+#[cfg(feature = "loom")]
+use loom::sync::Arc;
+use std::rc::{Rc, Weak};
+#[cfg(not(feature = "loom"))]
+use std::sync::{Arc, Weak as AWeak};
 
 use crate::{
     interface::{IntoStrongRef, RawBuffers, Strategy, StrongRef, WeakRef, WhichOf},
@@ -17,8 +18,10 @@ type DefaultStrategy = crate::strategy::HazardStrategy;
 type LocalDefaultStrategy = crate::strategy::LocalHazardStrategy;
 
 /// An unique owned strong ptr to a double buffer
+#[cfg(not(feature = "loom"))]
 pub struct OwnedWithWeak<S, B, W = WhichOf<S>>(Arc<Shared<S, B, W>>);
 
+#[cfg(not(feature = "loom"))]
 impl<S: Strategy, B: RawBuffers> OwnedWithWeak<S, B> {
     /// create a new owned ptr
     pub fn new(shared: Shared<S, B>) -> Self {
@@ -27,6 +30,7 @@ impl<S: Strategy, B: RawBuffers> OwnedWithWeak<S, B> {
 }
 
 #[cfg(feature = "alloc")]
+#[cfg(not(feature = "loom"))]
 impl<B> OwnedWithWeak<DefaultStrategy, crate::raw::SizedRawDoubleBuffer<B>> {
     /// create a new owned ptr
     pub fn from_buffers(front: B, back: B) -> Self {
@@ -37,6 +41,7 @@ impl<B> OwnedWithWeak<DefaultStrategy, crate::raw::SizedRawDoubleBuffer<B>> {
     }
 }
 
+#[cfg(not(feature = "loom"))]
 impl<S, B, W> TryFrom<Arc<Shared<S, B, W>>> for OwnedWithWeak<S, B, W> {
     type Error = Arc<Shared<S, B, W>>;
 
@@ -53,6 +58,7 @@ impl<S, B, W> TryFrom<Arc<Shared<S, B, W>>> for OwnedWithWeak<S, B, W> {
 //
 // * the result of `into_strong` must not alias with any other pointer
 // * the shared buffer in `get_mut` must be the same shared buffer returned from `<Self::Strong as Deref>::deref`
+#[cfg(not(feature = "loom"))]
 unsafe impl<S: Strategy, B: RawBuffers> IntoStrongRef for OwnedWithWeak<S, B> {
     type Strong = OwnedStrong<S, B>;
 
@@ -83,19 +89,24 @@ unsafe impl<S: Strategy, B: RawBuffers> IntoStrongRef for OwnedWithWeak<S, B> {
 }
 
 /// An owned strong ptr to a shared double buffer
+#[cfg(not(feature = "loom"))]
 pub struct OwnedStrong<S, B, W = WhichOf<S>>(Arc<Shared<S, B, W>>);
 /// An owned weak ptr to a shared double buffer
+#[cfg(not(feature = "loom"))]
 pub struct OwnedWeak<S, B, W = WhichOf<S>>(AWeak<Shared<S, B, W>>);
 
 /// The error representing a failed upgrade from OwnedWeak to OwnedStrong
+#[cfg(not(feature = "loom"))]
 pub struct UpgradeError;
 
+#[cfg(not(feature = "loom"))]
 impl core::fmt::Debug for UpgradeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("could upgrade OwnedWeak to OwnedStrong")
     }
 }
 
+#[cfg(not(feature = "loom"))]
 impl<S, B, W> Deref for OwnedStrong<S, B, W> {
     type Target = Shared<S, B, W>;
 
@@ -104,6 +115,7 @@ impl<S, B, W> Deref for OwnedStrong<S, B, W> {
     }
 }
 
+#[cfg(not(feature = "loom"))]
 impl<S, B, W> Clone for OwnedWeak<S, B, W> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
@@ -116,6 +128,7 @@ impl<S, B, W> Clone for OwnedWeak<S, B, W> {
 // * `WeakRef::upgrade(&StrongRef::downgrade(this))` must alias with `this` if
 //     `WeakRef::upgrade` returns `Ok`
 /// * moving the strong ref shouldn't invalidate pointers to inside the strong ref
+#[cfg(not(feature = "loom"))]
 unsafe impl<S: Strategy, B: RawBuffers> StrongRef for OwnedStrong<S, B> {
     type RawBuffers = B;
     type Strategy = S;
@@ -131,6 +144,7 @@ unsafe impl<S: Strategy, B: RawBuffers> StrongRef for OwnedStrong<S, B> {
 /// * `WeakRef::upgrade(&StrongRef::downgrade(this))` must alias with `this` if
 ///     `WeakRef::upgrade` returns `Ok`
 /// * once `WeakRef::upgrade` returns `Err` it must always return `Err`
+#[cfg(not(feature = "loom"))]
 unsafe impl<S: Strategy, B: RawBuffers> WeakRef for OwnedWeak<S, B> {
     type Strong = OwnedStrong<S, B>;
     type UpgradeError = UpgradeError;
@@ -494,6 +508,7 @@ unsafe impl<S: Strategy, B: RawBuffers> WeakRef for LocalOwnedPtr<S, B> {
 
 #[test]
 #[cfg(feature = "std")]
+#[cfg(not(feature = "loom"))]
 fn test_op_writer() {
     enum Op {
         Add(i32),

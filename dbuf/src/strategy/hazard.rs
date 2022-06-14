@@ -55,10 +55,11 @@
 //! * while this subsequence is non-empty the [`HazardStrategy`] will iterate over the sub-sequence and remove
 //! elements from the sub-sequence which have are `EMPTY` or not in the same generation.
 
-use core::{
-    ptr,
-    sync::atomic::{AtomicPtr, AtomicU32, Ordering},
-};
+use core::ptr;
+#[cfg(not(feature = "loom"))]
+use core::sync::atomic::{AtomicPtr, AtomicU32, Ordering};
+#[cfg(feature = "loom")]
+use loom::sync::atomic::{AtomicPtr, AtomicU32, Ordering};
 use std::boxed::Box;
 
 use crate::{
@@ -121,7 +122,18 @@ impl<W: Default> Default for HazardStrategy<W> {
 
 impl<W> HazardStrategy<W> {
     /// Create a new [`HazardStrategy`] with the given [`WaitStrategy`]
+    #[cfg(not(feature = "loom"))]
     pub const fn with_park_strategy(park: W) -> Self {
+        Self {
+            ptr: AtomicPtr::new(ptr::null_mut()),
+            generation: AtomicU32::new(1),
+            wait: park,
+        }
+    }
+
+    /// Create a new [`HazardStrategy`] with the given [`WaitStrategy`]
+    #[cfg(feature = "loom")]
+    pub fn with_park_strategy(park: W) -> Self {
         Self {
             ptr: AtomicPtr::new(ptr::null_mut()),
             generation: AtomicU32::new(1),
@@ -369,6 +381,9 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
 
 impl<W> Drop for HazardStrategy<W> {
     fn drop(&mut self) {
+        #[cfg(feature = "loom")]
+        let mut ptr = self.ptr.with_mut(|a| *a);
+        #[cfg(not(feature = "loom"))]
         let mut ptr = *self.ptr.get_mut();
 
         while !ptr.is_null() {
@@ -416,6 +431,57 @@ mod test {
         assert!(writer.is_swap_finished());
 
         drop(b);
+
+        // assert_eq!(*reader.get(), 10);
+        // let split_mut = writer.split_mut();
+        // *split_mut.writer = 20;
+        // assert_eq!(*reader.get(), 10);
+
+        // writer.try_swap_buffers().unwrap();
+
+        // assert_eq!(*reader.get(), 20);
+
+        // let mut reader2 = reader.clone();
+        // let _a = reader.get();
+
+        // // SAFETY: we don't call any &mut self methods on writer any more
+        // let mut swap = unsafe { writer.try_start_buffer_swap() }.unwrap();
+
+        // assert!(!writer.is_swap_finished(&mut swap));
+
+        // drop(_a);
+        // let _a = reader2.get();
+
+        // assert!(writer.is_swap_finished(&mut swap));
+    }
+
+    #[test]
+    #[cfg(feature = "loom")]
+    #[cfg(feature = "alloc")]
+    fn test_mutlithreaded() {
+        use crate::wait::SpinWait;
+
+        loom::model(|| {
+            let mut shared = crate::raw::Shared::new(
+                super::HazardStrategy::<SpinWait>::default(),
+                crate::raw::SizedRawDoubleBuffer::new(0, 0),
+            );
+            let mut writer = crate::raw::Writer::new(crate::ptrs::alloc::Owned::new(shared));
+
+            let mut reader = writer.reader();
+
+            loom::thread::spawn(move || {
+                writer.swap_buffers();
+                loom::thread::yield_now();
+            });
+
+            loom::thread::spawn(move || {
+                let a = reader.get();
+                let a = &*a;
+
+                loom::thread::yield_now();
+            });
+        })
 
         // assert_eq!(*reader.get(), 10);
         // let split_mut = writer.split_mut();

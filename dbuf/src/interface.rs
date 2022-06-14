@@ -235,11 +235,17 @@ pub unsafe trait Strategy {
 ///     assert_eq!(c, c_unsync);
 /// }
 /// ```
-pub unsafe trait Which {
+pub unsafe trait Which: Sized {
     /// The initial value of Self
     ///
     /// Which::INIT.load() should always return false
     const INIT: Self;
+
+    /// INTERNAL ONLY
+    #[cfg(feature = "loom")]
+    fn new() -> Self {
+        Self::INIT
+    }
 
     /// Load the boolean flag for which buffer is on top
     ///
