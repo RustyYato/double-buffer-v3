@@ -100,7 +100,7 @@ struct ActiveReader {
 
 impl LocalHazardStrategy {
     /// Create a new hazard strategy
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             ptr: Cell::new(ptr::null_mut()),
             generation: Cell::new(1),

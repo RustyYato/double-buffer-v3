@@ -89,7 +89,7 @@ impl WaitStrategy for ThreadParker {
 /// This waiter will spin for using exponential backoff, then park the thread
 #[cfg(feature = "std")]
 pub struct AdaptiveWait {
-    ///
+    /// the thread parker
     thread: ThreadParker,
 }
 
