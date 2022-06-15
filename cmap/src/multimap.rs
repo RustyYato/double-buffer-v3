@@ -10,8 +10,7 @@ use sync_wrapper::SyncWrapper;
 
 use crate::split::Split;
 
-// type Strat = dbuf::strategy::HazardStrategy<dbuf::wait::DefaultWait>;
-type Strat = dbuf::strategy::TrackingStrategy;
+type Strat = dbuf::strategy::HazardStrategy<dbuf::wait::DefaultWait>;
 
 pub struct Bag<T> {
     inner: BagInner<T>,

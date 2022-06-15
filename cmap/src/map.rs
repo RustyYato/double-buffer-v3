@@ -9,15 +9,12 @@ use sync_wrapper::SyncWrapper;
 
 use crate::split::Split;
 
-type Waiter = dbuf::wait::DefaultWait;
+type Strat = dbuf::strategy::HazardStrategy<dbuf::wait::DefaultWait>;
 
 pub struct CMap<K, V, S = RandomState> {
     #[allow(clippy::type_complexity)]
     inner: dbuf::op::OpWriter<
-        dbuf::ptrs::alloc::OwnedPtr<
-            dbuf::strategy::HazardStrategy<Waiter>,
-            dbuf::raw::SizedRawDoubleBuffer<HashMap<K, V, S>>,
-        >,
+        dbuf::ptrs::alloc::OwnedPtr<Strat, dbuf::raw::SizedRawDoubleBuffer<HashMap<K, V, S>>>,
         MapOp<K, V, S>,
     >,
 }
@@ -25,10 +22,7 @@ pub struct CMap<K, V, S = RandomState> {
 pub struct CMapReader<K, V, S = RandomState> {
     #[allow(clippy::type_complexity)]
     inner: dbuf::raw::Reader<
-        dbuf::ptrs::alloc::OwnedPtr<
-            dbuf::strategy::HazardStrategy<Waiter>,
-            dbuf::raw::SizedRawDoubleBuffer<HashMap<K, V, S>>,
-        >,
+        dbuf::ptrs::alloc::OwnedPtr<Strat, dbuf::raw::SizedRawDoubleBuffer<HashMap<K, V, S>>>,
     >,
 }
 
@@ -36,10 +30,7 @@ pub struct CMapReadGuard<'a, K, V, S, T: ?Sized = HashMap<K, V, S>> {
     #[allow(clippy::type_complexity)]
     inner: dbuf::raw::ReadGuard<
         'a,
-        dbuf::ptrs::alloc::OwnedPtr<
-            dbuf::strategy::HazardStrategy<Waiter>,
-            dbuf::raw::SizedRawDoubleBuffer<HashMap<K, V, S>>,
-        >,
+        dbuf::ptrs::alloc::OwnedPtr<Strat, dbuf::raw::SizedRawDoubleBuffer<HashMap<K, V, S>>>,
         T,
     >,
 }
