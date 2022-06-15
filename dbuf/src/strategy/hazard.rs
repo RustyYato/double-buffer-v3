@@ -143,7 +143,9 @@ impl<W> HazardStrategy<W> {
 
     /// create a new reader tag
     fn create_reader(&self) -> ReaderTag {
-        ReaderTag(())
+        ReaderTag {
+            node: ptr::null_mut(),
+        }
     }
 }
 
@@ -151,7 +153,10 @@ impl<W> HazardStrategy<W> {
 pub struct WriterTag(());
 /// the reader tag for [`HazardStrategy`]
 #[derive(Clone, Copy)]
-pub struct ReaderTag(());
+pub struct ReaderTag {
+    /// the node which the reader last used as active reader
+    node: *mut ActiveReader,
+}
 /// the validation token for [`HazardStrategy`]
 pub struct ValidationToken {
     /// the generation that we captured
@@ -165,7 +170,14 @@ pub struct Capture {
     start: *mut ActiveReader,
 }
 /// the reader guard for [`HazardStrategy`]
-pub struct ReaderGuard(*mut ActiveReader);
+pub struct ReaderGuard(());
+
+// SAFETY: ReaderTag follows the normal rules for data access
+// so we can implement Send and Sync for it
+unsafe impl Send for ReaderTag {}
+// SAFETY: ReaderTag follows the normal rules for data access
+// so we can implement Send and Sync for it
+unsafe impl Sync for ReaderTag {}
 
 // SAFETY: Capture follows the normal rules for data access
 // so we can implement Send and Sync for it
@@ -173,14 +185,6 @@ unsafe impl Send for Capture {}
 // SAFETY: Capture follows the normal rules for data access
 // so we can implement Send and Sync for it
 unsafe impl Sync for Capture {}
-
-// SAFETY: ReaderGuard follows the normal rules for data access
-// so we can implement Send and Sync for it
-unsafe impl Send for ReaderGuard {}
-
-// SAFETY: ReaderGuard follows the normal rules for data access
-// so we can implement Send and Sync for it
-unsafe impl Sync for ReaderGuard {}
 
 // SAFETY: FIXME
 unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
@@ -206,7 +210,9 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
     }
 
     fn dangling_reader_tag() -> Self::ReaderTag {
-        ReaderTag(())
+        ReaderTag {
+            node: ptr::null_mut(),
+        }
     }
 
     fn validate_swap(
@@ -323,32 +329,34 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
     }
 
     #[inline]
-    unsafe fn begin_read_guard(&self, _: &mut Self::ReaderTag) -> Self::ReaderGuard {
-        let mut ptr = self.ptr.load(Ordering::Acquire);
-
+    unsafe fn begin_read_guard(&self, reader: &mut Self::ReaderTag) -> Self::ReaderGuard {
         let generation = self.generation.load(Ordering::Acquire);
 
-        // SAFETY: we never remove links from the linked list so the ptr is either null or valid
-        while let Some(active_reader) = unsafe { ptr.as_ref() } {
+        if !reader.node.is_null() {
+            // SAFETY: the reader node is either null or valid and points
+            // into the `self.ptr` linked list
+            let active_reader = unsafe { &*reader.node };
             if active_reader
                 .generation
                 .compare_exchange(0, generation, Ordering::Release, Ordering::Relaxed)
                 .is_ok()
             {
-                return ReaderGuard(ptr);
+                return ReaderGuard(());
             }
-
-            ptr = active_reader.next;
         }
 
-        self.begin_read_guard_slow(generation)
+        let node = self.load_read_guard(generation);
+
+        reader.node = node;
+
+        ReaderGuard(())
     }
 
-    unsafe fn end_read_guard(&self, _: &mut Self::ReaderTag, guard: Self::ReaderGuard) {
+    unsafe fn end_read_guard(&self, reader: &mut Self::ReaderTag, _: Self::ReaderGuard) {
         // SAFETY: we never remove links from the linked list
         // and we only create valid links for `ReaderGuard`
         // so the link in the guard is still valid
-        unsafe { (*guard.0).generation.store(0, Ordering::Release) };
+        unsafe { (*reader.node).generation.store(0, Ordering::Release) };
 
         self.wait.notify();
     }
@@ -359,11 +367,33 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
 }
 
 impl<W> HazardStrategy<W> {
+    /// Load the reader guard from the linked list
+    /// because the reader node cache failed
+    #[cold]
+    fn load_read_guard(&self, generation: u32) -> *mut ActiveReader {
+        let mut ptr = self.ptr.load(Ordering::Acquire);
+
+        // SAFETY: we never remove links from the linked list so the ptr is either null or valid
+        while let Some(active_reader) = unsafe { ptr.as_ref() } {
+            if active_reader
+                .generation
+                .compare_exchange_weak(0, generation, Ordering::Release, Ordering::Relaxed)
+                .is_ok()
+            {
+                return ptr;
+            }
+
+            ptr = active_reader.next;
+        }
+
+        self.load_read_guard_slow(generation)
+    }
+
     /// The slow path of begin_read_guard which neeeds to allocate
     /// this should only happen if there are many readers aquiring
     /// for a read guard at the same time
     #[cold]
-    fn begin_read_guard_slow(&self, generation: u32) -> ReaderGuard {
+    fn load_read_guard_slow(&self, generation: u32) -> *mut ActiveReader {
         let active_reader = Box::into_raw(Box::new(ActiveReader {
             next: ptr::null_mut(),
             next_captured: ptr::null_mut(),
@@ -384,7 +414,7 @@ impl<W> HazardStrategy<W> {
             ) {
                 ptr = curr
             } else {
-                break ReaderGuard(active_reader);
+                break active_reader;
             }
         }
     }
