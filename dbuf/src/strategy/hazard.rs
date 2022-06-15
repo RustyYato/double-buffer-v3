@@ -41,9 +41,15 @@
 //!
 //! ### Reads
 //!
-//! When a reader tries to acquire a read guard, it will find the first non-empty node and put itself there.
-//! Then the `ReaderGuard` will point to that node, so when the guard ends, it can simply empty out the node
-//! without iterating over the list.
+//! When a reader tries to acquire a read guard, it will follow the following steps until
+//! it finds an available node
+//!
+//! * check it's local cache for an available node
+//! * check the entire linked list for an available node
+//! * create a new node and push it onto the list
+//!
+//! once it find sa node it will update it's local cache. Then when the read ends, it will
+//! clear out the active reader in it's cache (but keep it in the cache).
 //!
 //! ### Swaps
 //!
