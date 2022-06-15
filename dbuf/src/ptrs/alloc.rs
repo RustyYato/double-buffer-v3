@@ -12,11 +12,6 @@ use crate::{
     raw::Shared,
 };
 
-/// The default strategy used for from_buffers
-type DefaultStrategy = crate::strategy::HazardStrategy;
-/// The default strategy used for from_buffers
-type LocalDefaultStrategy = crate::strategy::LocalHazardStrategy;
-
 /// An unique owned strong ptr to a double buffer
 #[cfg(not(feature = "loom"))]
 pub struct OwnedWithWeak<S, B, W = WhichOf<S>>(Arc<Shared<S, B, W>>);
@@ -31,11 +26,11 @@ impl<S: Strategy, B: RawBuffers> OwnedWithWeak<S, B> {
 
 #[cfg(feature = "alloc")]
 #[cfg(not(feature = "loom"))]
-impl<B> OwnedWithWeak<DefaultStrategy, crate::raw::SizedRawDoubleBuffer<B>> {
+impl<S: Strategy + Default, B> OwnedWithWeak<S, crate::raw::SizedRawDoubleBuffer<B>> {
     /// create a new owned ptr
     pub fn from_buffers(front: B, back: B) -> Self {
         Self::new(Shared::new(
-            DefaultStrategy::new(),
+            S::default(),
             crate::raw::SizedRawDoubleBuffer::new(front, back),
         ))
     }
@@ -165,11 +160,11 @@ impl<S: Strategy, B: RawBuffers> LocalOwnedWithWeak<S, B> {
 }
 
 #[cfg(feature = "alloc")]
-impl<B> LocalOwnedWithWeak<LocalDefaultStrategy, crate::raw::SizedRawDoubleBuffer<B>> {
+impl<S: Strategy + Default, B> LocalOwnedWithWeak<S, crate::raw::SizedRawDoubleBuffer<B>> {
     /// create a new LocalOwned ptr
     pub fn from_buffers(front: B, back: B) -> Self {
         Self::new(Shared::new(
-            LocalDefaultStrategy::new(),
+            S::default(),
             crate::raw::SizedRawDoubleBuffer::new(front, back),
         ))
     }
@@ -291,11 +286,11 @@ impl<S: Strategy, B: RawBuffers> Owned<S, B> {
 }
 
 #[cfg(feature = "alloc")]
-impl<B> Owned<DefaultStrategy, crate::raw::SizedRawDoubleBuffer<B>> {
+impl<S: Strategy + Default, B> Owned<S, crate::raw::SizedRawDoubleBuffer<B>> {
     /// create a new owned ptr
     pub fn from_buffers(front: B, back: B) -> Self {
         Self::new(Shared::new(
-            DefaultStrategy::new(),
+            S::default(),
             crate::raw::SizedRawDoubleBuffer::new(front, back),
         ))
     }
@@ -404,11 +399,11 @@ impl<S: Strategy, B: RawBuffers> LocalOwned<S, B> {
 }
 
 #[cfg(feature = "alloc")]
-impl<B> LocalOwned<LocalDefaultStrategy, crate::raw::SizedRawDoubleBuffer<B>> {
+impl<S: Strategy + Default, B> LocalOwned<S, crate::raw::SizedRawDoubleBuffer<B>> {
     /// create a new LocalOwned ptr
     pub fn from_buffers(front: B, back: B) -> Self {
         Self::new(Shared::new(
-            LocalDefaultStrategy::new(),
+            S::default(),
             crate::raw::SizedRawDoubleBuffer::new(front, back),
         ))
     }
@@ -510,6 +505,8 @@ unsafe impl<S: Strategy, B: RawBuffers> WeakRef for LocalOwnedPtr<S, B> {
 #[cfg(feature = "std")]
 #[cfg(not(feature = "loom"))]
 fn test_op_writer() {
+    use crate::strategy::TrackingStrategy;
+
     enum Op {
         Add(i32),
         Mul(i32),
@@ -524,7 +521,7 @@ fn test_op_writer() {
         }
     }
 
-    let shared = OwnedWithWeak::from_buffers(0, 0);
+    let shared = OwnedWithWeak::<TrackingStrategy, _>::from_buffers(0, 0);
     let writer = crate::raw::Writer::new(shared);
     let mut writer = crate::op::OpWriter::from(writer);
 
