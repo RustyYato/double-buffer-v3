@@ -386,6 +386,10 @@ unsafe impl<S: Strategy, B: RawBuffers> WeakRef for OwnedPtr<S, B> {
     fn upgrade(this: &Self) -> Result<Self::Strong, Self::UpgradeError> {
         Ok(Self::clone(this))
     }
+
+    fn as_ref(&self) -> Option<&<Self::Strong as core::ops::Deref>::Target> {
+        Some(self)
+    }
 }
 
 /// An unique LocalOwned strong ptr to a double buffer
@@ -498,6 +502,10 @@ unsafe impl<S: Strategy, B: RawBuffers> WeakRef for LocalOwnedPtr<S, B> {
 
     fn upgrade(this: &Self) -> Result<Self::Strong, Self::UpgradeError> {
         Ok(Self::clone(this))
+    }
+
+    fn as_ref(&self) -> Option<&<Self::Strong as core::ops::Deref>::Target> {
+        Some(self)
     }
 }
 

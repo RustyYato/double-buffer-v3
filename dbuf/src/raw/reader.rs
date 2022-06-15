@@ -49,7 +49,7 @@ struct RawReadGuard<'a, S: StrongRef> {
     /// the reader which owns the lock
     tag: &'a mut ReaderTagOf<StrategyOf<S>>,
     /// a strong ref to the shared state to keep it alive
-    strong_ref: S,
+    strong_ref: Result<S, &'a StrategyOf<S>>,
     /// the reader guard token which the strategy can use to track which readers reading
     guard: ManuallyDrop<ReaderGuardOf<StrategyOf<S>>>,
     /// a lifetime to ensure that no other reads happen at the same time
@@ -60,8 +60,14 @@ impl<S: StrongRef> Drop for RawReadGuard<'_, S> {
     fn drop(&mut self) {
         // SAFETY: the guard is created in `Reader::try_get` and never touched until here so it's still valid
         let guard = unsafe { ManuallyDrop::take(&mut self.guard) };
+
+        let strategy = match self.strong_ref {
+            Ok(ref strong_ref) => &strong_ref.strategy,
+            Err(strategy) => strategy,
+        };
+
         // SAFETY: the reader (self.tag) was the one that created the guard by construction of `Self`
-        unsafe { self.strong_ref.strategy.end_read_guard(self.tag, guard) }
+        unsafe { strategy.end_read_guard(self.tag, guard) }
     }
 }
 
@@ -78,8 +84,17 @@ impl<W: WeakRef> Reader<W> {
 
     /// get a read lock on the double buffer
     pub fn try_get(&mut self) -> Result<ReadGuard<'_, StrongOf<W>>, W::UpgradeError> {
-        let strong_ref: W::Strong = W::upgrade(&self.ptr)?;
-        let shared = &*strong_ref;
+        let strong_ref;
+        let shared = match self.ptr.as_ref() {
+            Some(shared) => {
+                strong_ref = Err(&shared.strategy);
+                shared
+            }
+            _ => {
+                strong_ref = Ok(W::upgrade(&self.ptr)?);
+                strong_ref.as_ref().ok().unwrap()
+            }
+        };
 
         // first begin the guard *before* loading which buffer is for reads
         // to avoid racing with the writer
@@ -89,6 +104,7 @@ impl<W: WeakRef> Reader<W> {
 
         let which = shared.which.load();
         let (_writer, reader) = shared.buffers.get(which);
+
         Ok(ReadGuard {
             buffer: SharedRef {
                 // SAFETY: the reader ptr is valid for as long as the `strong_ref` is alive

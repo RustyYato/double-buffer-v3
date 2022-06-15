@@ -54,4 +54,8 @@ unsafe impl<S: Strategy, B: ?Sized + RawBuffers> WeakRef for &Shared<S, B> {
     fn upgrade(this: &Self) -> Result<Self::Strong, Self::UpgradeError> {
         Ok(*this)
     }
+
+    fn as_ref(&self) -> Option<&<Self::Strong as core::ops::Deref>::Target> {
+        Some(self)
+    }
 }

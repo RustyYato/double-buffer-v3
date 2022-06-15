@@ -93,6 +93,13 @@ pub unsafe trait WeakRef: Clone {
     ///
     /// If there are no other strong refs this may return Err
     fn upgrade(this: &Self) -> Result<Self::Strong, Self::UpgradeError>;
+
+    /// Get a reference to inside the strong ref directly from the weak ref
+    ///
+    /// This can be used to avoid an upgrade, which may introduce contention
+    fn as_ref(&self) -> Option<&<Self::Strong as Deref>::Target> {
+        None
+    }
 }
 
 /// The raw unsyncronized double buffer
