@@ -1,12 +1,12 @@
 //! an sync strategy which precisely which readers are actually reading from the buffer
 
 use core::sync::atomic::{AtomicUsize, Ordering};
-use std::{
-    sync::{Arc, Condvar, Mutex, PoisonError},
-    thread_local,
-    time::Duration,
-    vec::Vec,
-};
+use std::{sync::Arc, thread_local, time::Duration, vec::Vec};
+
+#[cfg(feature = "parking_lot")]
+use parking_lot::{Condvar, Mutex};
+#[cfg(not(feature = "parking_lot"))]
+use std::sync::{Condvar, Mutex, PoisonError};
 
 use crate::interface::Strategy;
 
@@ -54,10 +54,11 @@ impl TrackingStrategy {
         let tag = ReaderTag {
             generation: Arc::new(AtomicUsize::new(0)),
         };
-        self.readers
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .push(tag.generation.clone());
+        #[allow(unused_mut)]
+        let mut readers = self.readers.lock();
+        #[cfg(not(feature = "parking_lot"))]
+        let mut readers = readers.unwrap_or_else(PoisonError::into_inner);
+        readers.push(tag.generation.clone());
         tag
     }
 }
@@ -113,22 +114,24 @@ unsafe impl Strategy for TrackingStrategy {
     ) -> Self::Capture {
         let mut capture = Vec::new();
 
-        self.readers
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .retain(|tag| {
-                if Arc::strong_count(tag) == 1 {
-                    false
-                } else {
-                    let generation = tag.load(Ordering::Acquire);
+        #[allow(unused_mut)]
+        let mut readers = self.readers.lock();
+        #[cfg(not(feature = "parking_lot"))]
+        let mut readers = readers.unwrap_or_else(PoisonError::into_inner);
 
-                    if generation % 2 == 1 {
-                        capture.push((generation, tag.clone()))
-                    }
+        readers.retain(|tag| {
+            if Arc::strong_count(tag) == 1 {
+                false
+            } else {
+                let generation = tag.load(Ordering::Acquire);
 
-                    true
+                if generation % 2 == 1 {
+                    capture.push((generation, tag.clone()))
                 }
-            });
+
+                true
+            }
+        });
 
         Capture(capture)
     }
@@ -174,12 +177,19 @@ unsafe impl Strategy for TrackingStrategy {
         *pause += 1;
         *pause = (*pause).min(MAX_ITERATIONS);
 
-        let guard = self.readers.lock().unwrap_or_else(PoisonError::into_inner);
+        #[allow(unused_mut)]
+        let mut readers = self.readers.lock();
+        #[cfg(not(feature = "parking_lot"))]
+        let readers = readers.unwrap_or_else(PoisonError::into_inner);
 
         let timeout = MAX_TIMEOUT * (1 << pause_time) / (1 << MAX_ITERATIONS);
 
         #[allow(clippy::let_underscore_lock)]
-        let _ = self.cv.wait_timeout(guard, timeout);
+        #[cfg(not(feature = "parking_lot"))]
+        let _ = self.cv.wait_timeout(readers, timeout);
+
+        #[cfg(feature = "parking_lot")]
+        let _ = self.cv.wait_for(&mut readers, timeout);
     }
 }
 
