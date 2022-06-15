@@ -148,7 +148,7 @@ impl<W> HazardStrategy<W> {
     }
 
     /// create a new reader tag
-    fn create_reader(&self) -> ReaderTag {
+    fn create_reader() -> ReaderTag {
         ReaderTag {
             node: ptr::null_mut(),
         }
@@ -208,17 +208,15 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
     }
 
     unsafe fn create_reader_tag_from_writer(&self, _parent: &Self::WriterTag) -> Self::ReaderTag {
-        self.create_reader()
+        Self::create_reader()
     }
 
     unsafe fn create_reader_tag_from_reader(&self, _parent: &Self::ReaderTag) -> Self::ReaderTag {
-        self.create_reader()
+        Self::create_reader()
     }
 
     fn dangling_reader_tag() -> Self::ReaderTag {
-        ReaderTag {
-            node: ptr::null_mut(),
-        }
+        Self::create_reader()
     }
 
     fn validate_swap(
@@ -341,33 +339,43 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
     unsafe fn begin_read_guard(&self, reader: &mut Self::ReaderTag) -> Self::ReaderGuard {
         let generation = self.generation.load(Ordering::Acquire);
 
-        if !reader.node.is_null() {
-            // first check the local cache to see if there's an available node
-            // we use this cache to eliminate contention between nodes on different threads
-            // but this allows different readers to use the same active reader node
-            // as long as their read access patterns don't overlap
-            //
-            // with the cache, there will usually only be this reader and the writer
-            // who access this node, so there is minimal contention.
+        // SAFETY: the reader node is either null or valid and points
+        // into the `self.ptr` linked list
+        match unsafe { reader.node.as_ref() } {
+            Some(active_reader) => {
+                // first check the local cache to see if there's an available node
+                // we use this cache to eliminate contention between nodes on different threads
+                // but this allows different readers to use the same active reader node
+                // as long as their read access patterns don't overlap
+                //
+                // with the cache, there will usually only be this reader and the writer
+                // who access this node, so there is minimal contention.
 
-            // SAFETY: the reader node is either null or valid and points
-            // into the `self.ptr` linked list
-            let active_reader = unsafe { &*reader.node };
-            if active_reader
-                .generation
-                .compare_exchange(0, generation, Ordering::Release, Ordering::Relaxed)
-                .is_ok()
-            {
-                return ReaderGuard(());
+                match active_reader.generation.compare_exchange_weak(
+                    0,
+                    generation,
+                    Ordering::Release,
+                    Ordering::Relaxed,
+                ) {
+                    Ok(_) => ReaderGuard(()),
+                    Err(_generation) => {
+                        // if the cached node is in use by some other reader, then just allocate a new node
+                        // this minimizes contention and should improve throughput at the expense of a little memory
+                        let node = self.load_read_guard_slow(generation);
+                        reader.node = node;
+
+                        ReaderGuard(())
+                    }
+                }
+            }
+            None => {
+                // if we don't have a cached node, look for an available node
+                let node = self.load_read_guard(generation);
+                reader.node = node;
+
+                ReaderGuard(())
             }
         }
-
-        // if the cached node is in use by some other reader, then we should search for a new node
-        // in the list, and cache that node for later use
-        let node = self.load_read_guard(generation);
-        reader.node = node;
-
-        ReaderGuard(())
     }
 
     unsafe fn end_read_guard(&self, reader: &mut Self::ReaderTag, _: Self::ReaderGuard) {
