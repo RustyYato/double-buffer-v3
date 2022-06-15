@@ -235,6 +235,7 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
         _: &mut Self::WriterTag,
         ValidationToken { generation }: Self::ValidationToken,
     ) -> Self::Capture {
+        // create a sub-sequence of nodes which are in the given generation
         let head = self.ptr.load(Ordering::Acquire);
 
         if head.is_null() {
@@ -245,40 +246,53 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
         }
 
         let mut ptr = head;
-        let mut start = ptr::null_mut::<ActiveReader>();
-        let mut prev = head;
+        let mut sub_sequence_start = ptr::null_mut::<ActiveReader>();
+
+        // this is not null in case the sub-sequence is empty
+        // we can avoid a branch on the final set to `next_captured`
+        // by having it do a useless write to the head of the list
+        let mut sub_sequence_prev = ptr;
 
         // SAFETY: we never remove links from the linked list so the ptr is either null or valid
         while let Some(active_reader) = unsafe { ptr.as_ref() } {
             let current = active_reader.generation.load(Ordering::Acquire);
 
             if current == generation {
-                // set the first node that has a generation, then set start
-                if start.is_null() {
-                    start = ptr;
+                if sub_sequence_start.is_null() {
+                    // if this is the first node, then set it to the start
+                    sub_sequence_start = ptr;
                 } else {
+                    // otherwise set the previous node's `next_captured` field to continue the sub-sequence
+
                     // SAFETY: the `next_captured` field is only modified by the writer while we have either:
                     // * exclusive access to the writer tag or
                     // * exclusive access to the capture and shared access to the writer tag .
                     //
                     // Since we have exclusive access to the writer tag right now, we can't race with `have_readers_exited`
                     // because that has shared access to the writer tag.
-                    unsafe { (*prev).next_captured = ptr }
+                    unsafe { (*sub_sequence_prev).next_captured = ptr }
                 }
 
-                prev = ptr;
+                // update the previous node
+                sub_sequence_prev = ptr;
             }
 
+            // then continue on to the rest of the list
             ptr = active_reader.next;
         }
 
-        // SAFETY: the `next_captured` field is only modified by the writer while we have either:
+        // set the last node's `next_captured` to null to signify that it's the last in the sub-sequence
+
+        // SAFETY:
+        // * the ptr is valid because `head` and all nodes in the linked list are non-null and never deallocated until `Drop`
+        //
+        //  the `next_captured` field is only modified by the writer while we have either:
         // * exclusive access to the writer tag or
         // * exclusive access to the capture and shared access to the writer tag .
         //
         // Since we have exclusive access to the writer tag right now, we can't race with `have_readers_exited`
         // because that has shared access to the writer tag.
-        unsafe { (*prev).next_captured = ptr::null_mut() }
+        unsafe { (*sub_sequence_prev).next_captured = ptr::null_mut() }
 
         Capture {
             generation,
@@ -287,22 +301,18 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
     }
 
     unsafe fn have_readers_exited(&self, _: &Self::WriterTag, capture: &mut Self::Capture) -> bool {
+        // here we iterate over the capture sub-sequence and remove nodes which are no longer in the previous generation
+
         // SAFETY: this ptr is guarnteed to be a sublist of `self.ptr.load(_)`
         // because we got it in `capture_readers`
         let mut ptr = capture.start;
         let generation = capture.generation;
-        let mut prev = &mut capture.start;
 
-        let mut have_readers_exited = true;
-
-        while !ptr.is_null() {
-            // SAFETY: we never remove links from the linked list so the ptr is either null or valid
-            // end is a node later in the list or null so all nodes between are valid
-            let active_reader = unsafe { &*ptr };
+        // SAFETY: we never remove links from the linked list so the ptr is either null or valid
+        // end is a node later in the list or null so all nodes between are valid
+        while let Some(active_reader) = unsafe { ptr.as_ref() } {
             let current = active_reader.generation.load(Ordering::Acquire);
-
             let next = active_reader.next_captured;
-
             let reader_generation = current;
 
             debug_assert!(
@@ -312,26 +322,19 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
                 "invalid generation pair {generation} / {reader_generation}"
             );
 
-            if reader_generation != generation {
-                *prev = next;
-            } else {
-                have_readers_exited = false;
-                // SAFETY: the `next_captured` field is only modified by the writer while we have either:
-                // * exclusive access to the writer tag or
-                // * exclusive access to the capture and shared access to the writer tag .
-                //
-                // Since we have shared access to the writer tag right now, we can't race with `capture_readers`
-                // because that has exclusive access to the writer tag.
-                // Since we have exclusvie access to the capture and there can't be more than one in-progress swap,
-                // at a time, we can't race with `have_readers_exited`. So it's fine to get an exclusive reference
-                // to `next_captured`.
-                prev = unsafe { &mut (*ptr).next_captured };
+            if reader_generation == generation {
+                // if the reader is still in the buffer, then update the capture sub-sequence
+                // to the current node (because all previous nodes are out of the sub-sequence,
+                // if they were not, we would have exitted earlier)
+                capture.start = ptr;
+
+                return false;
             }
 
             ptr = next;
         }
 
-        have_readers_exited
+        true
     }
 
     #[inline]
@@ -339,6 +342,14 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
         let generation = self.generation.load(Ordering::Acquire);
 
         if !reader.node.is_null() {
+            // first check the local cache to see if there's an available node
+            // we use this cache to eliminate contention between nodes on different threads
+            // but this allows different readers to use the same active reader node
+            // as long as their read access patterns don't overlap
+            //
+            // with the cache, there will usually only be this reader and the writer
+            // who access this node, so there is minimal contention.
+
             // SAFETY: the reader node is either null or valid and points
             // into the `self.ptr` linked list
             let active_reader = unsafe { &*reader.node };
@@ -351,8 +362,9 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
             }
         }
 
+        // if the cached node is in use by some other reader, then we should search for a new node
+        // in the list, and cache that node for later use
         let node = self.load_read_guard(generation);
-
         reader.node = node;
 
         ReaderGuard(())
@@ -373,14 +385,15 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
 }
 
 impl<W> HazardStrategy<W> {
-    /// Load the reader guard from the linked list
-    /// because the reader node cache failed
+    /// Load the reader guard from the linked list because the reader node cache failed
     #[cold]
     fn load_read_guard(&self, generation: u32) -> *mut ActiveReader {
+        // load the entire linked list
         let mut ptr = self.ptr.load(Ordering::Acquire);
 
         // SAFETY: we never remove links from the linked list so the ptr is either null or valid
         while let Some(active_reader) = unsafe { ptr.as_ref() } {
+            // check if the given active reader is empty, and use it if it is
             if active_reader
                 .generation
                 .compare_exchange_weak(0, generation, Ordering::Release, Ordering::Relaxed)
@@ -389,9 +402,12 @@ impl<W> HazardStrategy<W> {
                 return ptr;
             }
 
+            // otherwise move on to the next active reader
             ptr = active_reader.next;
         }
 
+        // if none of the active readers are empty (usually because of high contention or spurious failures of `compare_exchange_weak`)
+        // then we should create a new node and push it onto the list
         self.load_read_guard_slow(generation)
     }
 
@@ -400,6 +416,7 @@ impl<W> HazardStrategy<W> {
     /// for a read guard at the same time
     #[cold]
     fn load_read_guard_slow(&self, generation: u32) -> *mut ActiveReader {
+        // the list is full so allocate a new node to push onto the head of the list
         let active_reader = Box::into_raw(Box::new(ActiveReader {
             next: ptr::null_mut(),
             next_captured: ptr::null_mut(),
@@ -409,9 +426,11 @@ impl<W> HazardStrategy<W> {
         let mut ptr = self.ptr.load(Ordering::Acquire);
 
         loop {
+            // set the next ptr to the current head
             // SAFETY: we never remove links from the linked list so the ptr is either null or valid
             unsafe { (*active_reader).next = ptr }
 
+            // and swap in new node with the head
             if let Err(curr) = self.ptr.compare_exchange_weak(
                 ptr,
                 active_reader,
