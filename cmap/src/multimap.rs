@@ -232,6 +232,7 @@ impl<K: Hash + Eq + Split, V: Split + Hash + Eq, S: BuildHasher> CMultiMap<K, V,
             move |is_first, map| {
                 map.retain(|k, v| {
                     v.retain(|v, mut count| {
+                        #[allow(clippy::mut_range_bound)]
                         for _ in 0..count {
                             count -= usize::from(f(is_first, k, v))
                         }
