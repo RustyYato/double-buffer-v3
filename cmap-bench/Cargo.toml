@@ -1,0 +1,12 @@
+[package]
+name = "cmap-bench"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cmap = { path = '../cmap' }
+evmap = '10'
+clap = { vesrion = '3', features = ['derive'] }
+human_format = '1'
