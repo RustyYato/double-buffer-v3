@@ -76,7 +76,9 @@ impl WaitStrategy for ThreadParker {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         #[allow(clippy::let_underscore_lock)]
-        let _ = self.cv.wait(lock);
+        let _ = self
+            .cv
+            .wait_timeout(lock, std::time::Duration::from_millis(1));
 
         true
     }
