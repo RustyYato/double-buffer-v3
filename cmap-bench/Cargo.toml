@@ -7,6 +7,6 @@ edition = "2021"
 
 [dependencies]
 cmap = { path = '../cmap' }
-evmap = '10'
+evmap = { git = 'https://github.com/jonhoo/evmap.git', branch = 'master' }
 clap = { vesrion = '3', features = ['derive'] }
 human_format = '1'

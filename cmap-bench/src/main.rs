@@ -65,7 +65,7 @@ fn main() {
                 for reader_count in min_readers..=max_readers.unwrap_or(min_readers) {
                     let reader_count = reader_count.to_string();
                     for mode in ["c-map", "ev-map"] {
-                        eprintln!("run reader_count={reader_count}, write_count={write_count_s}, mode={mode}");
+                        eprint!("run reader_count={reader_count}, write_count={write_count_s}, mode={mode}");
                         let output = std::process::Command::new(&program)
                             .args([
                                 "run-with-config",
@@ -81,9 +81,13 @@ fn main() {
                         let output = String::from_utf8(output.stdout).unwrap();
                         let output =
                             output.parse::<f32>().unwrap() / timeout_secs * (write_count as f32);
-                        println!("{reader_count},{write_count_s},{mode},{output}");
-                        eprintln!("{}", human_format::Formatter::new().format(output as f64));
+                        eprintln!(
+                            ", writes/s={}",
+                            human_format::Formatter::new().format(output as f64)
+                        );
+                        println!("{reader_count}\t{write_count_s}\t{mode}\t{output}");
                     }
+                    eprintln!();
                 }
                 write_count *= 2;
             }
@@ -127,15 +131,15 @@ fn main() {
             timeout,
             mode: Mode::EVMap,
         } => {
-            let (reader, mut map) = evmap::new();
+            let (mut map, reader) = evmap::new();
 
-            map.refresh();
+            map.publish();
 
             for _ in 0..reader_count {
                 let reader = reader.clone();
 
                 std::thread::spawn(move || {
-                    reader.read();
+                    reader.enter();
                 });
             }
 
@@ -149,7 +153,7 @@ fn main() {
                 }
                 map.purge();
 
-                map.flush();
+                map.publish();
                 if end <= Instant::now() {
                     break;
                 }
