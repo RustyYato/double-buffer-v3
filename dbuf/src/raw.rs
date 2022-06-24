@@ -13,6 +13,10 @@ mod writer;
 pub use reader::{ReadGuard, Reader};
 pub use writer::{Split, SplitMut, Swap, Writer};
 
+/// A default thead-safe shared state for a double buffer
+#[cfg(feature = "alloc")]
+pub type SyncShared<T, S = crate::strategy::HazardStrategy> = Shared<S, SizedRawDoubleBuffer<T>>;
+
 /// The shared state in required to manage a double buffer
 pub struct Shared<S, B: ?Sized, W = WhichOf<S>> {
     /// the strategy used to syncronize the double buffer
@@ -23,10 +27,21 @@ pub struct Shared<S, B: ?Sized, W = WhichOf<S>> {
     buffers: B,
 }
 
+#[cfg(feature = "alloc")]
+impl<T> SyncShared<T> {
+    /// Create a shared state from two buffers
+    pub const fn from_buffers(front: T, back: T) -> Self {
+        Self::from_raw_parts(
+            crate::strategy::HazardStrategy::new(),
+            SizedRawDoubleBuffer::new(front, back),
+        )
+    }
+}
+
 impl<S: Strategy, B> Shared<S, B> {
     /// Create a new shared state to manage the double buffer
     #[cfg(not(feature = "loom"))]
-    pub const fn new(strategy: S, buffers: B) -> Self {
+    pub const fn from_raw_parts(strategy: S, buffers: B) -> Self {
         Self {
             strategy,
             which: Which::INIT,

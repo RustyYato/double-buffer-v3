@@ -1,6 +1,8 @@
 //! various waiting strategeis
 
 use crate::interface::WaitStrategy;
+#[cfg(feature = "std")]
+use once_cell::sync::OnceCell;
 
 #[derive(Default)]
 /// This waiter will do nothing on wait
@@ -40,14 +42,29 @@ impl WaitStrategy for SpinWait {
 /// This waiter will park the thread on wait
 #[cfg(feature = "std")]
 pub struct ThreadParker {
-    ///
+    /// the mutex and condition variable for thread parker
+    inner: OnceCell<ThreadParkerInner>,
+}
+
+#[cfg(feature = "std")]
+#[doc(hidden)]
+struct ThreadParkerInner {
     mutex: std::sync::Mutex<()>,
-    ///
     cv: std::sync::Condvar,
 }
 
 #[cfg(feature = "std")]
 impl ThreadParker {
+    /// Create a new thread parker
+    pub const fn new() -> Self {
+        Self {
+            inner: OnceCell::new(),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl ThreadParkerInner {
     /// Create a new thread parker
     pub fn new() -> Self {
         Self {
@@ -70,13 +87,14 @@ impl WaitStrategy for ThreadParker {
 
     #[cold]
     fn wait(&self, _: &mut Self::State) -> bool {
-        let lock = self
+        let inner = self.inner.get_or_init(ThreadParkerInner::new);
+        let lock = inner
             .mutex
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         #[allow(clippy::let_underscore_lock)]
-        let _ = self
+        let _ = inner
             .cv
             .wait_timeout(lock, std::time::Duration::from_millis(1));
 
@@ -84,7 +102,9 @@ impl WaitStrategy for ThreadParker {
     }
 
     fn notify(&self) {
-        self.cv.notify_one();
+        if let Some(inner) = self.inner.get() {
+            inner.cv.notify_one();
+        }
     }
 }
 
@@ -98,7 +118,7 @@ pub struct AdaptiveWait {
 #[cfg(feature = "std")]
 impl AdaptiveWait {
     /// create a new adaptive waiter
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             thread: ThreadParker::new(),
         }
@@ -143,7 +163,7 @@ pub struct DefaultWait {
 
 impl DefaultWait {
     /// create a new default waiter
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             #[cfg(feature = "std")]
             adaptive: AdaptiveWait::new(),

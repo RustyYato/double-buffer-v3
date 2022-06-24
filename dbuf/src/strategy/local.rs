@@ -131,7 +131,7 @@ unsafe impl Strategy for LocalStrategy {
 
 #[test]
 fn test_local() {
-    let mut shared = crate::raw::Shared::new(
+    let mut shared = crate::raw::Shared::from_raw_parts(
         LocalStrategy::new(),
         crate::raw::SizedRawDoubleBuffer::new(0, 0),
     );

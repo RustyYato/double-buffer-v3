@@ -171,7 +171,7 @@ unsafe impl Strategy for LocalTrackingStrategy {
 
 #[test]
 fn test_local_tracking() {
-    let mut shared = crate::raw::Shared::new(
+    let mut shared = crate::raw::Shared::from_raw_parts(
         LocalTrackingStrategy::new(),
         crate::raw::SizedRawDoubleBuffer::new(0, 0),
     );

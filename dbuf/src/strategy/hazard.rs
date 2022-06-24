@@ -115,21 +115,21 @@ struct ActiveReader {
 
 impl HazardStrategy {
     /// Create a new hazard strategy
-    pub fn new() -> Self {
-        Self::with_park_strategy(crate::wait::DefaultWait::new())
+    pub const fn new() -> Self {
+        Self::with_wait_strategy(crate::wait::DefaultWait::new())
     }
 }
 
 impl<W: Default> Default for HazardStrategy<W> {
     fn default() -> Self {
-        Self::with_park_strategy(W::default())
+        Self::with_wait_strategy(W::default())
     }
 }
 
 impl<W> HazardStrategy<W> {
     /// Create a new [`HazardStrategy`] with the given [`WaitStrategy`]
     #[cfg(not(feature = "loom"))]
-    pub const fn with_park_strategy(park: W) -> Self {
+    pub const fn with_wait_strategy(park: W) -> Self {
         Self {
             ptr: AtomicPtr::new(ptr::null_mut()),
             generation: AtomicU32::new(1),
@@ -480,7 +480,7 @@ mod test {
     #[test]
     #[cfg_attr(feature = "loom", ignore = "when using loom: ignore normal tests")]
     fn test_local_tracking() {
-        let mut shared = crate::raw::Shared::new(
+        let mut shared = crate::raw::Shared::from_raw_parts(
             super::HazardStrategy::new(),
             crate::raw::SizedRawDoubleBuffer::new(0, 0),
         );
