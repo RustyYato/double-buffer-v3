@@ -203,6 +203,8 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
     type ReaderGuard = ReaderGuard;
     type Pause = W::State;
 
+    const READER_TAG_NEEDS_CONSTRUCTION: bool = false;
+
     unsafe fn create_writer_tag(&mut self) -> Self::WriterTag {
         WriterTag(())
     }

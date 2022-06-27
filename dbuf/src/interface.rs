@@ -141,6 +141,10 @@ pub unsafe trait Strategy {
     /// a type which can be used to add state to pause iterations
     type Pause: Default;
 
+    /// if false, then it's safe to use `dangling_reader_tag` instead of creating a reader
+    /// tag from the `create_reader_tag*` functions
+    const READER_TAG_NEEDS_CONSTRUCTION: bool = true;
+
     /// Creates a writer tag managed by this strategy
     ///
     /// # Safety

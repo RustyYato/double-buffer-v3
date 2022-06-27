@@ -151,19 +151,18 @@ where
 }
 impl<W: WeakRef> Clone for Reader<W> {
     fn clone(&self) -> Self {
-        match W::upgrade(&self.ptr) {
-            Ok(ptr) => {
+        if <StrategyOf<StrongOf<W>> as Strategy>::READER_TAG_NEEDS_CONSTRUCTION {
+            if let Ok(ptr) = W::upgrade(&self.ptr) {
                 // Safety: the writer is owned by this strategy as it was created by this strategy
                 let tag = unsafe { ptr.strategy.create_reader_tag_from_reader(&self.tag) };
                 // Safety: the writer is owned by this strategy as it was created by this strategy
-                unsafe { Self::from_raw_parts(tag, self.ptr.clone()) }
-            }
-            Err(_) => {
-                let tag = <StrategyOf<StrongOf<W>> as Strategy>::dangling_reader_tag();
-                // Safety: this reader tag will never be used because the writer is dead
-                unsafe { Self::from_raw_parts(tag, self.ptr.clone()) }
+                return unsafe { Self::from_raw_parts(tag, self.ptr.clone()) };
             }
         }
+
+        let tag = <StrategyOf<StrongOf<W>> as Strategy>::dangling_reader_tag();
+        // Safety: this reader tag will never be used because the writer is dead
+        unsafe { Self::from_raw_parts(tag, self.ptr.clone()) }
     }
 }
 

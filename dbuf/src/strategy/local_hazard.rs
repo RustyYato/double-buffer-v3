@@ -147,6 +147,8 @@ unsafe impl Strategy for LocalHazardStrategy {
     type ReaderGuard = ReaderGuard;
     type Pause = ();
 
+    const READER_TAG_NEEDS_CONSTRUCTION: bool = false;
+
     #[inline]
     unsafe fn create_writer_tag(&mut self) -> Self::WriterTag {
         WriterTag(())
