@@ -1,4 +1,16 @@
 //! An operation based writer
+//!
+//! [`OpWriter`] is literally just a pair of [`OpLog`] and a [`DelayedWriter`].
+//! This allows it to keep swaps fast (by delaying them until all readers have exited)
+//! and keep the two halves consistent using the [`OpLog`] to keep track of which operations
+//! have been applied to which buffers.
+//!
+//! This allows the [`OpWriter`] to provide the following guarantees. If the two buffers start out
+//! indistinguishable, and the operations applied make the same modifications when applied to each buffer,
+//! then the two buffers will remain indistinguishable after each [`flush`](OpWriter::flush)/[`swap_buffers`](OpWriter::swap_buffers).
+//!
+//! WARNING: if any operation panics, then the [`OpWriter`] makes no guarntees about the consistency of the two buffers.
+//! The only guarntee is that there will be no undefined behavior. (certain [`Operation`]s may provided further guarntees)
 
 use std::{convert::Infallible, ops::Deref};
 
@@ -10,6 +22,8 @@ use crate::{
 };
 
 /// An operation based writer
+///
+/// see module docs and [`OpLog`] for details
 pub struct OpWriter<S, O, W = WriterTag<StrategyOf<S>>, C = CaptureOf<StrategyOf<S>>> {
     /// the underlying writer
     writer: DelayedWriter<S, W, C>,

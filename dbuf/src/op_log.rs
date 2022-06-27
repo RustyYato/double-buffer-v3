@@ -1,8 +1,41 @@
 //! An operation log which tracks which operations were applied to which buffer
+//!
+//! An [`OpLog`] can be used to keep the two halves of the double buffer in sync
+//! by applying all operations to both halves. It does this via the [`Operation`] trait,
+//! the first time an operation is applied, [`OpLog`] will call [`Operation::apply`],
+//! the second time it will call [`Operation::apply_last`]. (The distinction allows for more
+//! optimized implementation of [`apply_last`](Operation::apply_last)).
+//!
+//! For example, consider a double buffered hash map.
+//!
+//! ```
+//! let MAP = Map::new():
+//!
+//! MAP.insert(...);
+//! MAP.insert(...);
+//! MAP.insert(...);
+//! MAP.insert(...);
+//! MAP.update(...);
+//! MAP.remove(...);
+//! ```
+//!
+//! Each of the methods above could be an operation in the [`OpLog`] to insert/update/remove
+//! elements in the map. Then when the operations are all [applied](OpLog::apply) (e.g. when
+//! the buffers are being swapped). Then we apply the operations once to the back buffer,
+//! then bring the back buffer forward. Later when calling [`OpLog::apply`](OpLog::apply),
+//! the [`OpLog`] can apply the operations again to the other buffer.
+//!
+//! ### Panics
+//!
+//! If an operation panics, then subsequent operations may be skipped or dropped. This is to allow for
+//! more optimized operation application during non-panic situations, but may make other double buffered
+//! data structures built atop this out of sync! So be careful to not panic during operation application.
 
 use std::vec::Vec;
 
 /// An operation that can be applied to a buffer
+///
+/// see
 pub trait Operation<B: ?Sized>: Sized {
     /// apply this operation to the buffer
     fn apply(&mut self, buffer: &mut B);
