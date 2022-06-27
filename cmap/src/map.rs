@@ -117,11 +117,7 @@ where
     Strat: Strategy<ValidationError = Infallible> + Default,
 {
     pub fn from_maps(front: HashMap<K, V, S>, back: HashMap<K, V, S>) -> Self {
-        Self {
-            inner: dbuf::op::OpWriter::from(dbuf::raw::Writer::new(
-                dbuf::ptrs::alloc::Owned::from_buffers(front, back),
-            )),
-        }
+        Self::from_raw_parts(front, back, Strat::default())
     }
 }
 
@@ -129,6 +125,21 @@ impl<K, V, S, Strat> CMap<K, V, S, Strat>
 where
     Strat: Strategy<ValidationError = Infallible>,
 {
+    pub fn from_raw_parts(
+        front: HashMap<K, V, S>,
+        back: HashMap<K, V, S>,
+        strategy: Strat,
+    ) -> Self {
+        Self {
+            inner: dbuf::op::OpWriter::from(dbuf::raw::Writer::new(dbuf::ptrs::alloc::Owned::new(
+                dbuf::raw::Shared::from_raw_parts(
+                    strategy,
+                    dbuf::raw::SizedRawDoubleBuffer::new(front, back),
+                ),
+            ))),
+        }
+    }
+
     pub fn reader(&self) -> CMapReader<K, V, S, Strat> {
         CMapReader {
             inner: self.inner.reader(),
