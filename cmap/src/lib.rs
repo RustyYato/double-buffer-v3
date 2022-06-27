@@ -1,6 +1,8 @@
 #[forbid(unsafe_code)]
 pub mod btreemap;
 #[forbid(unsafe_code)]
+pub mod btreemultimap;
+#[forbid(unsafe_code)]
 pub mod map;
 #[forbid(unsafe_code)]
 pub mod multimap;

@@ -8,7 +8,7 @@
 //!
 //! For example, consider a double buffered hash map.
 //!
-//! ```
+//! ```ignore
 //! let MAP = Map::new():
 //!
 //! MAP.insert(...);
