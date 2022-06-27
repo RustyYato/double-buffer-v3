@@ -1,16 +1,17 @@
+use super::{DefaultHasher, DefaultStrat};
 use std::{
     borrow::Borrow,
-    collections::{hash_map::RandomState, HashMap},
+    collections::HashMap,
+    convert::Infallible,
     hash::{BuildHasher, Hash},
     ops::Deref,
 };
 
+use dbuf::interface::Strategy;
 use hashbag::HashBag;
 use sync_wrapper::SyncWrapper;
 
 use crate::split::Split;
-
-type Strat = dbuf::strategy::HazardStrategy<dbuf::wait::DefaultWait>;
 
 pub struct Bag<T> {
     inner: BagInner<T>,
@@ -82,7 +83,10 @@ enum BagInner<T> {
     Many(HashBag<T>),
 }
 
-pub struct CMultiMap<K, V, S = RandomState> {
+pub struct CMultiMap<K, V, S = DefaultHasher, Strat = DefaultStrat>
+where
+    Strat: Strategy<ValidationError = Infallible>,
+{
     #[allow(clippy::type_complexity)]
     inner: dbuf::op::OpWriter<
         dbuf::ptrs::alloc::OwnedPtr<Strat, dbuf::raw::SizedRawDoubleBuffer<HashMap<K, Bag<V>, S>>>,
@@ -90,14 +94,20 @@ pub struct CMultiMap<K, V, S = RandomState> {
     >,
 }
 
-pub struct CMultiMapReader<K, V, S = RandomState> {
+pub struct CMultiMapReader<K, V, S = DefaultHasher, Strat = DefaultStrat>
+where
+    Strat: Strategy<ValidationError = Infallible>,
+{
     #[allow(clippy::type_complexity)]
     inner: dbuf::raw::Reader<
         dbuf::ptrs::alloc::OwnedPtr<Strat, dbuf::raw::SizedRawDoubleBuffer<HashMap<K, Bag<V>, S>>>,
     >,
 }
 
-pub struct CMapReadGuard<'a, K, V, S, T: ?Sized = HashMap<K, Bag<V>, S>> {
+pub struct CMapReadGuard<'a, K, V, S, Strat = DefaultStrat, T: ?Sized = HashMap<K, Bag<V>, S>>
+where
+    Strat: Strategy<ValidationError = Infallible>,
+{
     #[allow(clippy::type_complexity)]
     inner: dbuf::raw::ReadGuard<
         'a,
@@ -166,13 +176,19 @@ impl<K, V> CMultiMap<K, V> {
     }
 }
 
-impl<K, V, S: Default> Default for CMultiMap<K, V, S> {
+impl<K, V, S: Default, Strat: Default> Default for CMultiMap<K, V, S, Strat>
+where
+    Strat: Strategy<ValidationError = Infallible>,
+{
     fn default() -> Self {
         Self::from_maps(Default::default(), Default::default())
     }
 }
 
-impl<K, V, S: Split> CMultiMap<K, V, S> {
+impl<K, V, S: Split, Strat> CMultiMap<K, V, S, Strat>
+where
+    Strat: Strategy<ValidationError = Infallible> + Default,
+{
     pub fn with_hasher(mut hasher: S) -> Self {
         Self::from_maps(
             HashMap::with_hasher(hasher.split()),
@@ -181,18 +197,26 @@ impl<K, V, S: Split> CMultiMap<K, V, S> {
     }
 }
 
-impl<K, V, S> CMultiMap<K, V, S> {
-    pub fn reader(&self) -> CMultiMapReader<K, V, S> {
-        CMultiMapReader {
-            inner: self.inner.reader(),
-        }
-    }
-
+impl<K, V, S, Strat> CMultiMap<K, V, S, Strat>
+where
+    Strat: Strategy<ValidationError = Infallible> + Default,
+{
     pub fn from_maps(front: HashMap<K, Bag<V>, S>, back: HashMap<K, Bag<V>, S>) -> Self {
         Self {
             inner: dbuf::op::OpWriter::from(dbuf::raw::Writer::new(
                 dbuf::ptrs::alloc::Owned::from_buffers(front, back),
             )),
+        }
+    }
+}
+
+impl<K, V, S, Strat> CMultiMap<K, V, S, Strat>
+where
+    Strat: Strategy<ValidationError = Infallible>,
+{
+    pub fn reader(&self) -> CMultiMapReader<K, V, S, Strat> {
+        CMultiMapReader {
+            inner: self.inner.reader(),
         }
     }
 
@@ -201,7 +225,10 @@ impl<K, V, S> CMultiMap<K, V, S> {
     }
 }
 
-impl<K: Hash + Eq + Split, V: Split + Hash + Eq, S: BuildHasher> CMultiMap<K, V, S> {
+impl<K: Hash + Eq + Split, V: Split + Hash + Eq, S: BuildHasher, Strat> CMultiMap<K, V, S, Strat>
+where
+    Strat: Strategy<ValidationError = Infallible>,
+{
     pub fn insert(&mut self, key: K, value: V) {
         self.inner.apply(MapOp::Insert(key, value));
     }
@@ -248,7 +275,10 @@ impl<K: Hash + Eq + Split, V: Split + Hash + Eq, S: BuildHasher> CMultiMap<K, V,
     }
 }
 
-impl<K, V, S> Clone for CMultiMapReader<K, V, S> {
+impl<K, V, S, Strat> Clone for CMultiMapReader<K, V, S, Strat>
+where
+    Strat: Strategy<ValidationError = Infallible>,
+{
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -256,14 +286,17 @@ impl<K, V, S> Clone for CMultiMapReader<K, V, S> {
     }
 }
 
-impl<K, V, S> CMultiMapReader<K, V, S> {
-    pub fn load(&mut self) -> CMapReadGuard<K, V, S> {
+impl<K, V, S, Strat> CMultiMapReader<K, V, S, Strat>
+where
+    Strat: Strategy<ValidationError = Infallible>,
+{
+    pub fn load(&mut self) -> CMapReadGuard<K, V, S, Strat> {
         CMapReadGuard {
             inner: self.inner.get(),
         }
     }
 
-    pub fn get<Q>(&mut self, key: &Q) -> Option<CMapReadGuard<K, V, S, Bag<V>>>
+    pub fn get<Q>(&mut self, key: &Q) -> Option<CMapReadGuard<K, V, S, Strat, Bag<V>>>
     where
         Q: ?Sized + Hash + Eq,
         K: Hash + Eq + Borrow<Q>,
@@ -273,7 +306,10 @@ impl<K, V, S> CMultiMapReader<K, V, S> {
     }
 }
 
-impl<K, V, S, T: ?Sized> Deref for CMapReadGuard<'_, K, V, S, T> {
+impl<K, V, S, Strat, T: ?Sized> Deref for CMapReadGuard<'_, K, V, S, Strat, T>
+where
+    Strat: Strategy<ValidationError = Infallible>,
+{
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -281,8 +317,11 @@ impl<K, V, S, T: ?Sized> Deref for CMapReadGuard<'_, K, V, S, T> {
     }
 }
 
-impl<'a, K, V, S, T: ?Sized> CMapReadGuard<'a, K, V, S, T> {
-    pub fn map<U: ?Sized>(self, f: impl FnOnce(&T) -> &U) -> CMapReadGuard<'a, K, V, S, U> {
+impl<'a, K, V, S, Strat, T: ?Sized> CMapReadGuard<'a, K, V, S, Strat, T>
+where
+    Strat: Strategy<ValidationError = Infallible>,
+{
+    pub fn map<U: ?Sized>(self, f: impl FnOnce(&T) -> &U) -> CMapReadGuard<'a, K, V, S, Strat, U> {
         CMapReadGuard {
             inner: dbuf::raw::ReadGuard::map(self.inner, f),
         }
@@ -291,7 +330,7 @@ impl<'a, K, V, S, T: ?Sized> CMapReadGuard<'a, K, V, S, T> {
     pub fn try_map<U: ?Sized>(
         self,
         f: impl FnOnce(&T) -> Option<&U>,
-    ) -> Result<CMapReadGuard<'a, K, V, S, U>, Self> {
+    ) -> Result<CMapReadGuard<'a, K, V, S, Strat, U>, Self> {
         match dbuf::raw::ReadGuard::try_map(self.inner, f) {
             Ok(inner) => Ok(CMapReadGuard { inner }),
             Err(inner) => Err(CMapReadGuard { inner }),
@@ -299,7 +338,11 @@ impl<'a, K, V, S, T: ?Sized> CMapReadGuard<'a, K, V, S, T> {
     }
 }
 
-impl<K, V, S, T: ?Sized + core::fmt::Debug> core::fmt::Debug for CMapReadGuard<'_, K, V, S, T> {
+impl<K, V, S, Strat, T: ?Sized + core::fmt::Debug> core::fmt::Debug
+    for CMapReadGuard<'_, K, V, S, Strat, T>
+where
+    Strat: Strategy<ValidationError = Infallible>,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         T::fmt(self, f)
     }

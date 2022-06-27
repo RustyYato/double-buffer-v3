@@ -9,7 +9,7 @@ edition = "2021"
 
 default = ['std']
 
-std = ['alloc', 'once_cell']
+std = ['alloc', 'once_cell/std']
 alloc = ['slab']
 
 [dependencies]
