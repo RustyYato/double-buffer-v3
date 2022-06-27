@@ -281,8 +281,16 @@ where
         ))))
     }
 
-    pub fn flush(&mut self) {
+    pub fn unapplied(&self) -> &[MapOp<K, V, S>] {
+        self.inner.unapplied()
+    }
+
+    pub fn refresh(&mut self) {
         self.inner.swap_buffers();
+    }
+
+    pub fn flush(&mut self) {
+        self.inner.flush()
     }
 }
 

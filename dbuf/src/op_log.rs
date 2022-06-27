@@ -32,6 +32,24 @@ impl<O> OpLog<O> {
         Self { ops, applied: 0 }
     }
 
+    /// Shrinks the capacity of the vector with a lower bound.
+    ///
+    /// The capacity will remain at least as large as both the length
+    /// and the supplied value.
+    ///
+    /// If the current capacity is less than the lower limit, this is a no-op.
+    pub fn shrink_to(&mut self, min_capacity: usize) {
+        self.ops.shrink_to(min_capacity)
+    }
+
+    /// Shrinks the capacity of the vector as much as possible.
+    ///
+    /// It will drop down as close as possible to the length but the allocator
+    /// may still inform the vector that there is space for a few more elements.
+    pub fn shrink_to_fit(&mut self) {
+        self.ops.shrink_to_fit()
+    }
+
     /// Reserves capacity for at least `additional` more elements to be inserted in a given `OpLog`
     pub fn reserve(&mut self, additional: usize) {
         self.ops.reserve(additional)
@@ -40,6 +58,11 @@ impl<O> OpLog<O> {
     /// Appends an element to the back of the `OpLog`.
     pub fn push(&mut self, op: O) {
         self.ops.push(op)
+    }
+
+    /// All operations which haven't yet been applied
+    pub fn unapplied(&self) -> &[O] {
+        &self.ops[self.applied..]
     }
 
     /// apply all operations to the given buffer
