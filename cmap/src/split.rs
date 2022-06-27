@@ -27,6 +27,9 @@ struct PairInner<T: ?Sized> {
     value: T,
 }
 
+unsafe impl<T: Send + Sync + ?Sized> Send for Pair<T> {}
+unsafe impl<T: Send + Sync + ?Sized> Sync for Pair<T> {}
+
 impl<T: ?Sized> Deref for Pair<T> {
     type Target = T;
 
