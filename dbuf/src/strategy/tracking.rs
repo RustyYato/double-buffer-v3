@@ -224,10 +224,8 @@ fn assert_sync<T: ?Sized + Sync>() {}
 )]
 #[allow()]
 fn _test_bounds() {
-    type SizedPtr<'a> =
-        &'a crate::raw::Shared<TrackingStrategy, crate::raw::SizedRawDoubleBuffer<()>>;
-    type SlicePtr<'a> =
-        &'a crate::raw::Shared<TrackingStrategy, crate::raw::SliceRawDoubleBuffer<[()]>>;
+    type SizedPtr<'a> = &'a crate::raw::Shared<TrackingStrategy, crate::raw::RawDBuf<()>>;
+    type SlicePtr<'a> = &'a crate::raw::Shared<TrackingStrategy, crate::raw::SliceRawDbuf<[()]>>;
 
     assert_send::<TrackingStrategy>;
     assert_sync::<TrackingStrategy>;
@@ -248,10 +246,8 @@ fn _test_bounds() {
 #[test]
 #[cfg_attr(feature = "loom", ignore = "when using loom: ignore normal tests")]
 fn test_local_tracking() {
-    let mut shared = crate::raw::Shared::from_raw_parts(
-        TrackingStrategy::new(),
-        crate::raw::SizedRawDoubleBuffer::new(0, 0),
-    );
+    let mut shared =
+        crate::raw::Shared::from_raw_parts(TrackingStrategy::new(), crate::raw::RawDBuf::new(0, 0));
     let mut writer = crate::raw::Writer::new(&mut shared);
 
     let mut reader = writer.reader();

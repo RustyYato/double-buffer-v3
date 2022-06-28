@@ -12,7 +12,7 @@ where
 {
     #[allow(clippy::type_complexity)]
     inner: dbuf::op::OpWriter<
-        dbuf::ptrs::alloc::OwnedPtr<Strat, dbuf::raw::SizedRawDoubleBuffer<BTreeMap<K, V>>>,
+        dbuf::ptrs::alloc::OwnedPtr<Strat, dbuf::raw::RawDBuf<BTreeMap<K, V>>>,
         MapOp<K, V>,
     >,
 }
@@ -22,9 +22,8 @@ where
     Strat: Strategy<ValidationError = Infallible>,
 {
     #[allow(clippy::type_complexity)]
-    inner: dbuf::raw::Reader<
-        dbuf::ptrs::alloc::OwnedPtr<Strat, dbuf::raw::SizedRawDoubleBuffer<BTreeMap<K, V>>>,
-    >,
+    inner:
+        dbuf::raw::Reader<dbuf::ptrs::alloc::OwnedPtr<Strat, dbuf::raw::RawDBuf<BTreeMap<K, V>>>>,
 }
 
 pub struct CBTreeMapReadGuard<'a, K, V, Strat = DefaultStrat, T = BTreeMap<K, V>>
@@ -35,7 +34,7 @@ where
     #[allow(clippy::type_complexity)]
     inner: dbuf::raw::ReadGuard<
         'a,
-        dbuf::ptrs::alloc::OwnedPtr<Strat, dbuf::raw::SizedRawDoubleBuffer<BTreeMap<K, V>>>,
+        dbuf::ptrs::alloc::OwnedPtr<Strat, dbuf::raw::RawDBuf<BTreeMap<K, V>>>,
         T,
     >,
 }
@@ -111,10 +110,7 @@ where
     pub fn from_raw_parts(front: BTreeMap<K, V>, back: BTreeMap<K, V>, strategy: Strat) -> Self {
         Self {
             inner: dbuf::op::OpWriter::from(dbuf::raw::Writer::new(dbuf::ptrs::alloc::Owned::new(
-                dbuf::raw::Shared::from_raw_parts(
-                    strategy,
-                    dbuf::raw::SizedRawDoubleBuffer::new(front, back),
-                ),
+                dbuf::raw::Shared::from_raw_parts(strategy, dbuf::raw::RawDBuf::new(front, back)),
             ))),
         }
     }

@@ -18,7 +18,7 @@ where
 {
     #[allow(clippy::type_complexity)]
     inner: dbuf::op::OpWriter<
-        dbuf::ptrs::alloc::OwnedPtr<Strat, dbuf::raw::SizedRawDoubleBuffer<HashMap<K, V, S>>>,
+        dbuf::ptrs::alloc::OwnedPtr<Strat, dbuf::raw::RawDBuf<HashMap<K, V, S>>>,
         MapOp<K, V, S>,
     >,
 }
@@ -28,9 +28,8 @@ where
     Strat: Strategy<ValidationError = Infallible>,
 {
     #[allow(clippy::type_complexity)]
-    inner: dbuf::raw::Reader<
-        dbuf::ptrs::alloc::OwnedPtr<Strat, dbuf::raw::SizedRawDoubleBuffer<HashMap<K, V, S>>>,
-    >,
+    inner:
+        dbuf::raw::Reader<dbuf::ptrs::alloc::OwnedPtr<Strat, dbuf::raw::RawDBuf<HashMap<K, V, S>>>>,
 }
 
 pub struct CMapReadGuard<'a, K, V, S = DefaultHasher, Strat = DefaultStrat, T = HashMap<K, V, S>>
@@ -41,7 +40,7 @@ where
     #[allow(clippy::type_complexity)]
     inner: dbuf::raw::ReadGuard<
         'a,
-        dbuf::ptrs::alloc::OwnedPtr<Strat, dbuf::raw::SizedRawDoubleBuffer<HashMap<K, V, S>>>,
+        dbuf::ptrs::alloc::OwnedPtr<Strat, dbuf::raw::RawDBuf<HashMap<K, V, S>>>,
         T,
     >,
 }
@@ -132,10 +131,7 @@ where
     ) -> Self {
         Self {
             inner: dbuf::op::OpWriter::from(dbuf::raw::Writer::new(dbuf::ptrs::alloc::Owned::new(
-                dbuf::raw::Shared::from_raw_parts(
-                    strategy,
-                    dbuf::raw::SizedRawDoubleBuffer::new(front, back),
-                ),
+                dbuf::raw::Shared::from_raw_parts(strategy, dbuf::raw::RawDBuf::new(front, back)),
             ))),
         }
     }

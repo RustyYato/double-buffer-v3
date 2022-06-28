@@ -4,11 +4,11 @@ type DefaultStrategy = dbuf::strategy::HazardStrategy;
 
 pub struct PixelBuf<
     D: Dim,
-    S: DefaultOwned<dbuf::raw::SizedRawDoubleBuffer<<D as Dim>::ByteBuf>> = DefaultStrategy,
+    S: DefaultOwned<dbuf::raw::RawDBuf<<D as Dim>::ByteBuf>> = DefaultStrategy,
 > {
     buf: dbuf::raw::Writer<
         <S as dbuf::interface::DefaultOwned<
-            dbuf::raw::SizedRawDoubleBuffer<<D as Dim>::ByteBuf>,
+            dbuf::raw::RawDBuf<<D as Dim>::ByteBuf>,
         >>::StrongRefWithWeak,
     >,
     dim: D,
@@ -110,18 +110,18 @@ pub fn const_sized<const WIDTH: usize, const HEIGHT: usize>() -> PixelBuf<Const<
         buf: dbuf::raw::Writer::new(dbuf::ptrs::alloc::OwnedWithWeak::new(
             dbuf::raw::Shared::from_raw_parts(
                 DefaultStrategy::default(),
-                dbuf::raw::SizedRawDoubleBuffer::new(Const.zeroed(), Const.zeroed()),
+                dbuf::raw::RawDBuf::new(Const.zeroed(), Const.zeroed()),
             ),
         )),
     }
 }
 
-impl<D: Dim, S: DefaultOwned<dbuf::raw::SizedRawDoubleBuffer<<D as Dim>::ByteBuf>>> PixelBuf<D, S> {
+impl<D: Dim, S: DefaultOwned<dbuf::raw::RawDBuf<<D as Dim>::ByteBuf>>> PixelBuf<D, S> {
     pub fn from_raw_parts(dim: D, strategy: S) -> Self {
         Self {
-            buf: dbuf::raw::Writer::new(strategy.build_with_weak(
-                dbuf::raw::SizedRawDoubleBuffer::new(dim.zeroed(), dim.zeroed()),
-            )),
+            buf: dbuf::raw::Writer::new(
+                strategy.build_with_weak(dbuf::raw::RawDBuf::new(dim.zeroed(), dim.zeroed())),
+            ),
             dim,
         }
     }

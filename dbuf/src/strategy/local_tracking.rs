@@ -192,7 +192,7 @@ impl<B: crate::interface::RawBuffers> crate::interface::DefaultOwned<B> for Loca
 fn test_local_tracking() {
     let mut shared = crate::raw::Shared::from_raw_parts(
         LocalTrackingStrategy::new(),
-        crate::raw::SizedRawDoubleBuffer::new(0, 0),
+        crate::raw::RawDBuf::new(0, 0),
     );
     let mut writer = crate::raw::Writer::new(&mut shared);
 

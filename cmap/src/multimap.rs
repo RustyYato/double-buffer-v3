@@ -104,7 +104,7 @@ where
 {
     #[allow(clippy::type_complexity)]
     inner: dbuf::op::OpWriter<
-        dbuf::ptrs::alloc::OwnedPtr<Strat, dbuf::raw::SizedRawDoubleBuffer<HashMap<K, Bag<V>, S>>>,
+        dbuf::ptrs::alloc::OwnedPtr<Strat, dbuf::raw::RawDBuf<HashMap<K, Bag<V>, S>>>,
         MapOp<K, V, S>,
     >,
 }
@@ -115,7 +115,7 @@ where
 {
     #[allow(clippy::type_complexity)]
     inner: dbuf::raw::Reader<
-        dbuf::ptrs::alloc::OwnedPtr<Strat, dbuf::raw::SizedRawDoubleBuffer<HashMap<K, Bag<V>, S>>>,
+        dbuf::ptrs::alloc::OwnedPtr<Strat, dbuf::raw::RawDBuf<HashMap<K, Bag<V>, S>>>,
     >,
 }
 
@@ -126,7 +126,7 @@ where
     #[allow(clippy::type_complexity)]
     inner: dbuf::raw::ReadGuard<
         'a,
-        dbuf::ptrs::alloc::OwnedPtr<Strat, dbuf::raw::SizedRawDoubleBuffer<HashMap<K, Bag<V>, S>>>,
+        dbuf::ptrs::alloc::OwnedPtr<Strat, dbuf::raw::RawDBuf<HashMap<K, Bag<V>, S>>>,
         T,
     >,
 }
@@ -232,10 +232,7 @@ where
     ) -> Self {
         Self {
             inner: dbuf::op::OpWriter::from(dbuf::raw::Writer::new(dbuf::ptrs::alloc::Owned::new(
-                dbuf::raw::Shared::from_raw_parts(
-                    strategy,
-                    dbuf::raw::SizedRawDoubleBuffer::new(front, back),
-                ),
+                dbuf::raw::Shared::from_raw_parts(strategy, dbuf::raw::RawDBuf::new(front, back)),
             ))),
         }
     }

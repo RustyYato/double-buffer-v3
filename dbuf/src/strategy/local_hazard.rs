@@ -382,7 +382,7 @@ mod test {
     fn test_local_tracking() {
         let mut shared = crate::raw::Shared::from_raw_parts(
             super::LocalHazardStrategy::new(),
-            crate::raw::SizedRawDoubleBuffer::new(0, 0),
+            crate::raw::RawDBuf::new(0, 0),
         );
         let mut writer = crate::raw::Writer::new(&mut shared);
 

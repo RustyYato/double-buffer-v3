@@ -26,12 +26,12 @@ impl<S: Strategy, B: RawBuffers> OwnedWithWeak<S, B> {
 
 #[cfg(feature = "alloc")]
 #[cfg(not(feature = "loom"))]
-impl<S: Strategy + Default, B> OwnedWithWeak<S, crate::raw::SizedRawDoubleBuffer<B>> {
+impl<S: Strategy + Default, B> OwnedWithWeak<S, crate::raw::RawDBuf<B>> {
     /// create a new owned ptr
     pub fn from_buffers(front: B, back: B) -> Self {
         Self::new(Shared::from_raw_parts(
             S::default(),
-            crate::raw::SizedRawDoubleBuffer::new(front, back),
+            crate::raw::RawDBuf::new(front, back),
         ))
     }
 }
@@ -160,12 +160,12 @@ impl<S: Strategy, B: RawBuffers> LocalOwnedWithWeak<S, B> {
 }
 
 #[cfg(feature = "alloc")]
-impl<S: Strategy + Default, B> LocalOwnedWithWeak<S, crate::raw::SizedRawDoubleBuffer<B>> {
+impl<S: Strategy + Default, B> LocalOwnedWithWeak<S, crate::raw::RawDBuf<B>> {
     /// create a new LocalOwned ptr
     pub fn from_buffers(front: B, back: B) -> Self {
         Self::new(Shared::from_raw_parts(
             S::default(),
-            crate::raw::SizedRawDoubleBuffer::new(front, back),
+            crate::raw::RawDBuf::new(front, back),
         ))
     }
 }
@@ -286,12 +286,12 @@ impl<S: Strategy, B: RawBuffers> Owned<S, B> {
 }
 
 #[cfg(feature = "alloc")]
-impl<S: Strategy + Default, B> Owned<S, crate::raw::SizedRawDoubleBuffer<B>> {
+impl<S: Strategy + Default, B> Owned<S, crate::raw::RawDBuf<B>> {
     /// create a new owned ptr
     pub fn from_buffers(front: B, back: B) -> Self {
         Self::new(Shared::from_raw_parts(
             S::default(),
-            crate::raw::SizedRawDoubleBuffer::new(front, back),
+            crate::raw::RawDBuf::new(front, back),
         ))
     }
 }
@@ -403,12 +403,12 @@ impl<S: Strategy, B: RawBuffers> LocalOwned<S, B> {
 }
 
 #[cfg(feature = "alloc")]
-impl<S: Strategy + Default, B> LocalOwned<S, crate::raw::SizedRawDoubleBuffer<B>> {
+impl<S: Strategy + Default, B> LocalOwned<S, crate::raw::RawDBuf<B>> {
     /// create a new LocalOwned ptr
     pub fn from_buffers(front: B, back: B) -> Self {
         Self::new(Shared::from_raw_parts(
             S::default(),
-            crate::raw::SizedRawDoubleBuffer::new(front, back),
+            crate::raw::RawDBuf::new(front, back),
         ))
     }
 }

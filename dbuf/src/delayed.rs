@@ -127,10 +127,10 @@ impl<S: StrongRef> Deref for DelayedWriter<S> {
 fn test() {
     let mut shared = crate::raw::Shared::from_raw_parts(
         crate::strategy::TrackingStrategy::new(),
-        crate::raw::SliceRawDoubleBuffer::from_array([10, 20]),
+        crate::raw::SliceRawDbuf::from_array([10, 20]),
     );
     let mut writer = DelayedWriter::new(Writer::new(
-        &mut shared as &mut crate::raw::Shared<_, crate::raw::SliceRawDoubleBuffer<[_]>>,
+        &mut shared as &mut crate::raw::Shared<_, crate::raw::SliceRawDbuf<[_]>>,
     ));
 
     let split = writer.split();

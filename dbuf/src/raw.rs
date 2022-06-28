@@ -15,7 +15,7 @@ pub use writer::{Split, SplitMut, Swap, Writer};
 
 /// A default thead-safe shared state for a double buffer
 #[cfg(feature = "alloc")]
-pub type SyncShared<T, S = crate::strategy::HazardStrategy> = Shared<S, SizedRawDoubleBuffer<T>>;
+pub type SyncShared<T, S = crate::strategy::HazardStrategy> = Shared<S, RawDBuf<T>>;
 
 /// The shared state in required to manage a double buffer
 pub struct Shared<S, B: ?Sized, W = WhichOf<S>> {
@@ -33,7 +33,7 @@ impl<T> SyncShared<T> {
     pub const fn from_buffers(front: T, back: T) -> Self {
         Self::from_raw_parts(
             crate::strategy::HazardStrategy::new(),
-            SizedRawDoubleBuffer::new(front, back),
+            RawDBuf::new(front, back),
         )
     }
 }
@@ -64,38 +64,38 @@ impl<S: Strategy, B> Shared<S, B> {
 ///
 /// it contains two instances of T which are the two buffers
 #[repr(transparent)]
-pub struct SizedRawDoubleBuffer<T>(UnsafeCell<[T; 2]>);
+pub struct RawDBuf<T>(UnsafeCell<[T; 2]>);
 
 // SAFETY:
 // * (T: Send) we allow getting a mutable refrence to T from a mutable reference to Self
-unsafe impl<T: Send> Send for SizedRawDoubleBuffer<T> {}
+unsafe impl<T: Send> Send for RawDBuf<T> {}
 // SAFETY:
 // * (T: Send) we allow getting a mutable refrence to T from a shared reference to Self
 // * (T: Sync) we allow getting a shared refrence to T from a shared reference to Self
-unsafe impl<T: Send + Sync> Sync for SizedRawDoubleBuffer<T> {}
+unsafe impl<T: Send + Sync> Sync for RawDBuf<T> {}
 
 /// a slice raw double buffer
 ///
 /// the
 #[repr(transparent)]
-pub struct SliceRawDoubleBuffer<T: ?Sized>(UnsafeCell<T>);
+pub struct SliceRawDbuf<T: ?Sized>(UnsafeCell<T>);
 
 // SAFETY:
 // * (T: Send) we allow getting a mutable refrence to T from a mutable reference to Self
-unsafe impl<T: ?Sized + Send> Send for SliceRawDoubleBuffer<T> {}
+unsafe impl<T: ?Sized + Send> Send for SliceRawDbuf<T> {}
 // SAFETY:
 // * (T: Send) we allow getting a mutable refrence to T from a shared reference to Self
 // * (T: Sync) we allow getting a shared refrence to T from a shared reference to Self
-unsafe impl<T: ?Sized + Send + Sync> Sync for SliceRawDoubleBuffer<T> {}
+unsafe impl<T: ?Sized + Send + Sync> Sync for SliceRawDbuf<T> {}
 
-impl<T> SizedRawDoubleBuffer<T> {
+impl<T> RawDBuf<T> {
     /// Create a new sized raw double buffer
     pub const fn new(front: T, back: T) -> Self {
         Self(UnsafeCell::new([front, back]))
     }
 }
 
-impl<T, const N: usize> SliceRawDoubleBuffer<[T; N]> {
+impl<T, const N: usize> SliceRawDbuf<[T; N]> {
     /// Create a new slice raw double buffer
     ///
     /// The length of the slice must be even
@@ -106,7 +106,7 @@ impl<T, const N: usize> SliceRawDoubleBuffer<[T; N]> {
     }
 }
 
-impl<T> SliceRawDoubleBuffer<[T]> {
+impl<T> SliceRawDbuf<[T]> {
     /// Create a new slice raw double buffer
     ///
     /// The length of the slice must be even
@@ -121,7 +121,7 @@ impl<T> SliceRawDoubleBuffer<[T]> {
 // * the two pointers returned from get are always valid
 // * they are disjoint
 // * the data is not dereferenced
-unsafe impl<T> RawBuffers for SizedRawDoubleBuffer<T> {
+unsafe impl<T> RawBuffers for RawDBuf<T> {
     type Buffer = T;
 
     fn get(&self, which: bool) -> (*mut Self::Buffer, *const Self::Buffer) {
@@ -136,7 +136,7 @@ unsafe impl<T> RawBuffers for SizedRawDoubleBuffer<T> {
 // * the two pointers returned from get are always valid
 // * they are disjoint
 // * the data is not dereferenced
-unsafe impl<T> RawBuffers for SliceRawDoubleBuffer<[T]> {
+unsafe impl<T> RawBuffers for SliceRawDbuf<[T]> {
     type Buffer = [T];
 
     fn get(&self, which: bool) -> (*mut Self::Buffer, *const Self::Buffer) {

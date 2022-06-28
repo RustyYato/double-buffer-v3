@@ -501,7 +501,7 @@ mod test {
     fn test_local_tracking() {
         let mut shared = crate::raw::Shared::from_raw_parts(
             super::HazardStrategy::new(),
-            crate::raw::SizedRawDoubleBuffer::new(0, 0),
+            crate::raw::RawDBuf::new(0, 0),
         );
         let mut writer = crate::raw::Writer::new(&mut shared);
 
@@ -558,7 +558,7 @@ mod test {
         loom::model(|| {
             let mut shared = crate::raw::Shared::new(
                 super::HazardStrategy::<SpinWait>::default(),
-                crate::raw::SizedRawDoubleBuffer::new(0, 0),
+                crate::raw::RawDBuf::new(0, 0),
             );
             let mut writer = crate::raw::Writer::new(crate::ptrs::alloc::Owned::new(shared));
 

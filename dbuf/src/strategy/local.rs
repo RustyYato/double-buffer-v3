@@ -153,10 +153,8 @@ impl<B: crate::interface::RawBuffers> crate::interface::DefaultOwned<B> for Loca
 
 #[test]
 fn test_local() {
-    let mut shared = crate::raw::Shared::from_raw_parts(
-        LocalStrategy::new(),
-        crate::raw::SizedRawDoubleBuffer::new(0, 0),
-    );
+    let mut shared =
+        crate::raw::Shared::from_raw_parts(LocalStrategy::new(), crate::raw::RawDBuf::new(0, 0));
     let mut writer = crate::raw::Writer::new(&mut shared);
 
     let mut reader = writer.reader();
