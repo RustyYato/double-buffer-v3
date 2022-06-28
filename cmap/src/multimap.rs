@@ -27,7 +27,7 @@ impl<T> Default for Bag<T> {
 }
 
 impl<T> Bag<T> {
-    fn get_one(&self) -> Option<&T> {
+    pub fn get_one(&self) -> Option<&T> {
         match &self.inner {
             BagInner::One(None) => None,
             BagInner::One(Some((inner, _))) => Some(inner),
@@ -38,10 +38,18 @@ impl<T> Bag<T> {
     pub fn iter(&self) -> BagIter<'_, T> {
         self.into_iter()
     }
+
+    fn is_empty(&self) -> bool {
+        match &self.inner {
+            BagInner::One(None) | BagInner::One(Some((_, 0))) => true,
+            BagInner::One(Some(_)) => false,
+            BagInner::Many(bag) => bag.is_empty(),
+        }
+    }
 }
 
 impl<T: Hash + Eq> Bag<T> {
-    fn insert(&mut self, value: T) {
+    pub fn insert(&mut self, value: T) {
         match self.inner {
             BagInner::One(None) => self.inner = BagInner::One(Some((value, 1))),
             BagInner::One(Some((ref inner, ref mut count))) if *inner == value => *count += 1,
@@ -62,7 +70,7 @@ impl<T: Hash + Eq> Bag<T> {
         }
     }
 
-    fn remove(&mut self, value: &T) {
+    pub fn remove(&mut self, value: &T) {
         match self.inner {
             BagInner::One(Some((ref inner, ref mut count))) if inner == value && *count > 0 => {
                 *count -= 1
@@ -74,15 +82,7 @@ impl<T: Hash + Eq> Bag<T> {
         }
     }
 
-    fn is_empty(&self) -> bool {
-        match &self.inner {
-            BagInner::One(None) | BagInner::One(Some((_, 0))) => true,
-            BagInner::One(Some(_)) => false,
-            BagInner::Many(bag) => bag.is_empty(),
-        }
-    }
-
-    fn retain<F: FnMut(&T, usize) -> usize>(&mut self, mut f: F) {
+    pub fn retain<F: FnMut(&T, usize) -> usize>(&mut self, mut f: F) {
         match self.inner {
             BagInner::One(None) => (),
             BagInner::One(Some((ref value, ref mut count))) => {
