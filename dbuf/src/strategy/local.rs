@@ -131,6 +131,26 @@ unsafe impl Strategy for LocalStrategy {
     }
 }
 
+#[cfg(feature = "alloc")]
+impl<B: crate::interface::RawBuffers> crate::interface::DefaultOwned<B> for LocalStrategy {
+    type IntoStrongRefWithWeak = crate::ptrs::alloc::LocalOwnedWithWeak<Self, B>;
+    type StrongRefWithWeak = crate::ptrs::alloc::LocalOwnedStrong<Self, B>;
+    type WeakRef = crate::ptrs::alloc::LocalOwnedWeak<Self, B>;
+
+    type IntoStrongRef = crate::ptrs::alloc::LocalOwned<Self, B>;
+    type StrongRef = crate::ptrs::alloc::LocalOwnedPtr<Self, B>;
+
+    fn build_with_weak(self, buffers: B) -> Self::IntoStrongRefWithWeak {
+        crate::ptrs::alloc::LocalOwnedWithWeak::new(crate::raw::Shared::from_raw_parts(
+            self, buffers,
+        ))
+    }
+
+    fn build(self, buffers: B) -> Self::IntoStrongRef {
+        crate::ptrs::alloc::LocalOwned::new(crate::raw::Shared::from_raw_parts(self, buffers))
+    }
+}
+
 #[test]
 fn test_local() {
     let mut shared = crate::raw::Shared::from_raw_parts(

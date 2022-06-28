@@ -193,6 +193,23 @@ unsafe impl Strategy for TrackingStrategy {
     }
 }
 
+impl<B: crate::interface::RawBuffers> crate::interface::DefaultOwned<B> for TrackingStrategy {
+    type IntoStrongRefWithWeak = crate::ptrs::alloc::OwnedWithWeak<Self, B>;
+    type StrongRefWithWeak = crate::ptrs::alloc::OwnedStrong<Self, B>;
+    type WeakRef = crate::ptrs::alloc::OwnedWeak<Self, B>;
+
+    type IntoStrongRef = crate::ptrs::alloc::Owned<Self, B>;
+    type StrongRef = crate::ptrs::alloc::OwnedPtr<Self, B>;
+
+    fn build_with_weak(self, buffers: B) -> Self::IntoStrongRefWithWeak {
+        crate::ptrs::alloc::OwnedWithWeak::new(crate::raw::Shared::from_raw_parts(self, buffers))
+    }
+
+    fn build(self, buffers: B) -> Self::IntoStrongRef {
+        crate::ptrs::alloc::Owned::new(crate::raw::Shared::from_raw_parts(self, buffers))
+    }
+}
+
 #[allow(unused, clippy::missing_docs_in_private_items)]
 fn assert_send<T: ?Sized + Send>() {}
 

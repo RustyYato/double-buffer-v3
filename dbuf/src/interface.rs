@@ -289,3 +289,17 @@ pub trait WaitStrategy {
     /// unpark the one parked thread
     fn notify(&self);
 }
+
+#[allow(clippy::missing_docs_in_private_items)]
+pub trait DefaultOwned<B: RawBuffers>: Strategy {
+    type IntoStrongRefWithWeak: IntoStrongRef<Strong = Self::StrongRefWithWeak>;
+    type StrongRefWithWeak: StrongRef<Weak = Self::WeakRef>;
+    type WeakRef: WeakRef<Strong = Self::StrongRefWithWeak>;
+
+    type IntoStrongRef: IntoStrongRef<Strong = Self::StrongRef>;
+    type StrongRef: StrongRef<Weak = Self::StrongRef>
+        + WeakRef<Strong = Self::StrongRef, UpgradeError = core::convert::Infallible>;
+
+    fn build_with_weak(self, buffers: B) -> Self::IntoStrongRefWithWeak;
+    fn build(self, buffers: B) -> Self::IntoStrongRef;
+}
