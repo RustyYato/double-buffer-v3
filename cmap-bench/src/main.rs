@@ -118,7 +118,7 @@ fn main() {
                 }
                 map.purge();
 
-                map.flush();
+                map.publish();
                 if end <= Instant::now() {
                     break;
                 }

@@ -93,7 +93,7 @@ where
     }
 
     /// swap buffers if there are some unapplied operations
-    pub fn flush(&mut self) {
+    pub fn publish(&mut self) {
         if !self.unapplied().is_empty() {
             self.swap_buffers();
         }

@@ -293,12 +293,12 @@ where
         self.inner.unapplied()
     }
 
-    pub fn refresh(&mut self) {
+    pub fn force_publish(&mut self) {
         self.inner.swap_buffers();
     }
 
-    pub fn flush(&mut self) {
-        self.inner.flush()
+    pub fn publish(&mut self) {
+        self.inner.publish()
     }
 }
 
