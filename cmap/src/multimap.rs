@@ -25,6 +25,16 @@ impl<T> Default for Bag<T> {
     }
 }
 
+impl<T> Bag<T> {
+    fn get_one(&self) -> Option<&T> {
+        match &self.inner {
+            BagInner::One(None) => None,
+            BagInner::One(Some((inner, _))) => Some(inner),
+            BagInner::Many(many) => many.iter().next(),
+        }
+    }
+}
+
 impl<T: Hash + Eq> Bag<T> {
     fn insert(&mut self, value: T) {
         match self.inner {
@@ -256,6 +266,14 @@ where
         self.inner.split().reader.get(key)
     }
 
+    pub fn get_one<Q>(&self, key: &Q) -> Option<&V>
+    where
+        Q: ?Sized + Hash + Eq,
+        K: Borrow<Q>,
+    {
+        self.get(key)?.get_one()
+    }
+
     pub fn purge(&mut self) {
         self.inner.apply(MapOp::Purge)
     }
@@ -322,6 +340,17 @@ where
         S: BuildHasher,
     {
         self.load().try_map(|map| map.get(key)).ok()
+    }
+
+    pub fn get_one<Q>(&mut self, key: &Q) -> Option<CMapReadGuard<K, V, S, Strat, V>>
+    where
+        Q: ?Sized + Hash + Eq,
+        K: Hash + Eq + Borrow<Q>,
+        S: BuildHasher,
+    {
+        let guard = self.get(key)?;
+
+        CMapReadGuard::try_map(guard, Bag::get_one).ok()
     }
 }
 

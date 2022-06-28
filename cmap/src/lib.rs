@@ -12,5 +12,6 @@ pub type DefaultHasher = std::collections::hash_map::RandomState;
 pub type DefaultStrat = dbuf::strategy::HazardStrategy<dbuf::wait::DefaultWait>;
 
 pub use btreemap::{CBTreeMap, CBTreeMapReader};
+pub use btreemultimap::{CBTreeMultiMap, CBTreeMultiMapReader};
 pub use map::{CMap, CMapReader};
 pub use multimap::{CMultiMap, CMultiMapReader};
