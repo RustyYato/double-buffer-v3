@@ -208,6 +208,7 @@ unsafe impl Which for AtomicFlag {
         Self(AtomicBool::new(false))
     }
 
+    #[inline]
     unsafe fn load_unsync(&self) -> bool {
         #[cfg(feature = "loom")]
         // SAFETY: load unsync guarantees that this read won't race with flip

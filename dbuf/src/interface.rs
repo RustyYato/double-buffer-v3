@@ -265,6 +265,7 @@ pub unsafe trait Which: Sized {
     /// # Safety
     ///
     /// This may not be called in parellel to `Which::flip`
+    #[inline]
     unsafe fn load_unsync(&self) -> bool {
         self.load()
     }
