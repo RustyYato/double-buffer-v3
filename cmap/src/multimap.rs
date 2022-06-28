@@ -3,6 +3,7 @@ use std::{
     borrow::Borrow,
     collections::HashMap,
     convert::Infallible,
+    fmt,
     hash::{BuildHasher, Hash},
     ops::Deref,
 };
@@ -32,6 +33,10 @@ impl<T> Bag<T> {
             BagInner::One(Some((inner, _))) => Some(inner),
             BagInner::Many(many) => many.iter().next(),
         }
+    }
+
+    pub fn iter(&self) -> BagIter<'_, T> {
+        self.into_iter()
     }
 }
 
@@ -393,5 +398,44 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         T::fmt(self, f)
+    }
+}
+
+impl<'a, T> IntoIterator for &'a Bag<T> {
+    type Item = &'a T;
+    type IntoIter = BagIter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        match &self.inner {
+            BagInner::One(None) => BagIter::One(None),
+            BagInner::One(Some((value, count))) => BagIter::One(Some((value, *count))),
+            BagInner::Many(many) => BagIter::Many(many.iter()),
+        }
+    }
+}
+
+pub enum BagIter<'a, T> {
+    One(Option<(&'a T, usize)>),
+    Many(hashbag::Iter<'a, T>),
+}
+
+impl<'a, T> Iterator for BagIter<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            BagIter::One(None) | BagIter::One(Some((_, 0))) => None,
+            BagIter::One(Some((value, count))) => {
+                *count -= 1;
+                Some(value)
+            }
+            BagIter::Many(many) => many.next(),
+        }
+    }
+}
+
+impl<T: fmt::Debug> fmt::Debug for Bag<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_list().entries(self).finish()
     }
 }
