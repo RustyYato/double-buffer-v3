@@ -1,7 +1,7 @@
 use super::{DefaultHasher, DefaultStrat};
 use std::{
     borrow::Borrow,
-    collections::HashMap,
+    collections::{hash_map::Entry, HashMap},
     convert::Infallible,
     fmt,
     hash::{BuildHasher, Hash},
@@ -137,6 +137,11 @@ pub enum MapOp<K, V, S> {
     Remove(K, V),
     #[allow(clippy::type_complexity)]
     Arbitrary(SyncWrapper<Box<dyn FnMut(bool, &mut HashMap<K, Bag<V>, S>) + Send>>),
+    #[allow(clippy::type_complexity)]
+    ArbitraryFor(
+        K,
+        SyncWrapper<Box<dyn FnMut(bool, K, &mut HashMap<K, Bag<V>, S>) + Send>>,
+    ),
     Purge,
 }
 
@@ -161,6 +166,7 @@ impl<K: Hash + Eq + Split, V: Split + Hash + Eq, S: BuildHasher>
                 None => (),
             },
             MapOp::Arbitrary(f) => f.get_mut()(false, buffer),
+            MapOp::ArbitraryFor(ref mut key, f) => f.get_mut()(false, key.split(), buffer),
             MapOp::Purge => buffer.clear(),
         }
     }
@@ -180,6 +186,7 @@ impl<K: Hash + Eq + Split, V: Split + Hash + Eq, S: BuildHasher>
                 None => (),
             },
             MapOp::Arbitrary(mut f) => f.get_mut()(false, buffer),
+            MapOp::ArbitraryFor(key, mut f) => f.get_mut()(false, key, buffer),
             MapOp::Purge => buffer.clear(),
         }
     }
@@ -299,6 +306,28 @@ where
                 })
             },
         ))))
+    }
+
+    pub fn retain_for(&mut self, key: K, mut f: impl FnMut(bool, &V) -> bool + Send + 'static) {
+        self.inner.apply(MapOp::ArbitraryFor(
+            key,
+            SyncWrapper::new(Box::new(move |is_first, key, map| {
+                let bag = map.entry(key);
+                if let Entry::Occupied(mut bag) = bag {
+                    bag.get_mut().retain(|v, mut count| {
+                        #[allow(clippy::mut_range_bound)]
+                        for _ in 0..count {
+                            count -= usize::from(f(is_first, v))
+                        }
+                        count
+                    });
+
+                    if bag.get().is_empty() {
+                        bag.remove();
+                    }
+                }
+            })),
+        ))
     }
 
     pub fn unapplied(&self) -> &[MapOp<K, V, S>] {

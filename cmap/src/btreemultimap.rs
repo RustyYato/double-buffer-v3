@@ -1,7 +1,13 @@
 use self::ordbag::OrdBag;
 
 use super::{DefaultHasher, DefaultStrat};
-use std::{borrow::Borrow, collections::BTreeMap, convert::Infallible, fmt, ops::Deref};
+use std::{
+    borrow::Borrow,
+    collections::{btree_map::Entry, BTreeMap},
+    convert::Infallible,
+    fmt,
+    ops::Deref,
+};
 
 use dbuf::interface::Strategy;
 use sync_wrapper::SyncWrapper;
@@ -133,6 +139,11 @@ pub enum MapOp<K, V> {
     Remove(K, V),
     #[allow(clippy::type_complexity)]
     Arbitrary(SyncWrapper<Box<dyn FnMut(bool, &mut BTreeMap<K, Bag<V>>) + Send>>),
+    #[allow(clippy::type_complexity)]
+    ArbitraryFor(
+        K,
+        SyncWrapper<Box<dyn FnMut(bool, K, &mut BTreeMap<K, Bag<V>>) + Send>>,
+    ),
     Purge,
 }
 
@@ -159,6 +170,7 @@ where
                 None => (),
             },
             MapOp::Arbitrary(f) => f.get_mut()(false, buffer),
+            MapOp::ArbitraryFor(ref mut key, f) => f.get_mut()(false, key.split(), buffer),
             MapOp::Purge => buffer.clear(),
         }
     }
@@ -178,6 +190,7 @@ where
                 None => (),
             },
             MapOp::Arbitrary(mut f) => f.get_mut()(false, buffer),
+            MapOp::ArbitraryFor(key, mut f) => f.get_mut()(false, key, buffer),
             MapOp::Purge => buffer.clear(),
         }
     }
@@ -287,6 +300,28 @@ where
                 })
             },
         ))))
+    }
+
+    pub fn retain_for(&mut self, key: K, mut f: impl FnMut(bool, &V) -> bool + Send + 'static) {
+        self.inner.apply(MapOp::ArbitraryFor(
+            key,
+            SyncWrapper::new(Box::new(move |is_first, key, map| {
+                let bag = map.entry(key);
+                if let Entry::Occupied(mut bag) = bag {
+                    bag.get_mut().retain(|v, mut count| {
+                        #[allow(clippy::mut_range_bound)]
+                        for _ in 0..count {
+                            count -= usize::from(f(is_first, v))
+                        }
+                        count
+                    });
+
+                    if bag.get().is_empty() {
+                        bag.remove();
+                    }
+                }
+            })),
+        ))
     }
 
     pub fn unapplied(&self) -> &[MapOp<K, V>] {
