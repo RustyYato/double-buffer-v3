@@ -39,11 +39,19 @@ impl<T> Bag<T> {
         self.into_iter()
     }
 
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         match &self.inner {
             BagInner::One(None) | BagInner::One(Some((_, 0))) => true,
             BagInner::One(Some(_)) => false,
             BagInner::Many(bag) => bag.is_empty(),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match &self.inner {
+            BagInner::One(None) => 0,
+            BagInner::One(Some((_, count))) => *count,
+            BagInner::Many(bag) => bag.len(),
         }
     }
 }

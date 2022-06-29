@@ -48,6 +48,14 @@ impl<T> Bag<T> {
             BagInner::Many(bag) => bag.is_empty(),
         }
     }
+
+    pub fn len(&self) -> usize {
+        match &self.inner {
+            BagInner::One(None) => 0,
+            BagInner::One(Some((_, count))) => *count,
+            BagInner::Many(bag) => bag.len(),
+        }
+    }
 }
 
 impl<T: Ord> Bag<T> {
