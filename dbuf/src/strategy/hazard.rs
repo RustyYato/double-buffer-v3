@@ -73,6 +73,9 @@ use crate::{
     wait::DefaultWait,
 };
 
+/// thread id info
+mod thread;
+
 /// A hazard pointer strategy
 ///
 /// a lock-free synchronization strategy
@@ -111,6 +114,11 @@ struct ActiveReader {
 
     /// the generation that this active reader was acquried (or 0 of there isn't an active reader)
     generation: AtomicU32,
+
+    /// which thread does this allocation belong to
+    /// readers will prioritize active reader slots the same thread affinity
+    /// as themselves if they exist
+    affinity: thread::ThreadId,
 }
 
 impl HazardStrategy {
@@ -357,43 +365,34 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
 
         // SAFETY: the reader node is either null or valid and points
         // into the `self.ptr` linked list
-        match unsafe { reader.node.as_ref() } {
-            Some(active_reader) => {
-                // first check the local cache to see if there's an available node
-                // we use this cache to eliminate contention between nodes on different threads
-                // but this allows different readers to use the same active reader node
-                // as long as their read access patterns don't overlap
-                //
-                // with the cache, there will usually only be this reader and the writer
-                // who access this node, so there is minimal contention.
+        if let Some(active_reader) = unsafe { reader.node.as_ref() } {
+            // first check the local cache to see if there's an available node
+            // we use this cache to eliminate contention between nodes on different threads
+            // but this allows different readers to use the same active reader node
+            // as long as their read access patterns don't overlap
+            //
+            // with the cache, there will usually only be this reader and the writer
+            // who access this node, so there is minimal contention.
 
-                // Use Release/Relaxed because this is effectively a store operation
-                // and we only need to syncronize with `capture_readers` and `have_readers_exited`
-                match active_reader.generation.compare_exchange_weak(
-                    0,
-                    generation,
-                    Ordering::Release,
-                    Ordering::Relaxed,
-                ) {
-                    Ok(_) => ReaderGuard(()),
-                    Err(_generation) => {
-                        // if the cached node is in use by some other reader, then just allocate a new node
-                        // this minimizes contention and should improve throughput at the expense of a little memory
-                        let node = self.load_read_guard_slow(generation);
-                        reader.node = node;
-
-                        ReaderGuard(())
-                    }
-                }
-            }
-            None => {
-                // if we don't have a cached node, look for an available node
-                let node = self.load_read_guard(generation);
-                reader.node = node;
-
-                ReaderGuard(())
+            // Use Release/Relaxed because this is effectively a store operation
+            // and we only need to syncronize with `capture_readers` and `have_readers_exited`
+            match active_reader.generation.compare_exchange_weak(
+                0,
+                generation,
+                Ordering::Release,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => return ReaderGuard(()),
+                Err(_generation) => {}
             }
         }
+
+        // if the cached node is in use by some other reader, then just allocate a new node
+        // this minimizes contention and should improve throughput at the expense of a little memory
+        let node = self.load_read_guard(generation);
+        reader.node = node;
+
+        ReaderGuard(())
     }
 
     unsafe fn end_read_guard(&self, reader: &mut Self::ReaderTag, _: Self::ReaderGuard) {
@@ -431,6 +430,9 @@ impl<W> HazardStrategy<W> {
     /// Load the reader guard from the linked list because the reader node cache failed
     #[cold]
     fn load_read_guard(&self, generation: u32) -> *mut ActiveReader {
+        let affinity = thread::ThreadId::current();
+        let mut reader = ptr::null_mut::<ActiveReader>();
+
         // load the entire linked list
         let mut ptr = self.ptr.load(Ordering::Acquire);
 
@@ -440,23 +442,37 @@ impl<W> HazardStrategy<W> {
             // this allows hazard strategy to minimize allocations where possible
             // by using multiple reader for the same allocation
 
-            // Use Release/Relaxed because this is effectively a store operation
-            // and we only need to syncronize with `capture_readers` and `have_readers_exited`
-            if active_reader
-                .generation
-                .compare_exchange_weak(0, generation, Ordering::Release, Ordering::Relaxed)
-                .is_ok()
-            {
-                return ptr;
+            if reader.is_null() || active_reader.affinity == affinity {
+                // Use Release/Relaxed because this is effectively a store operation
+                // and we only need to syncronize with `capture_readers` and `have_readers_exited`
+                if active_reader
+                    .generation
+                    .compare_exchange_weak(0, generation, Ordering::Release, Ordering::Relaxed)
+                    .is_ok()
+                {
+                    if affinity == active_reader.affinity {
+                        // SAFETY: we never remove links from the linked list so the ptr is either null or valid
+                        if let Some(reader) = unsafe { reader.as_ref() } {
+                            reader.generation.store(0, Ordering::Release);
+                        }
+                        return ptr;
+                    } else {
+                        reader = ptr;
+                    }
+                }
             }
 
             // otherwise move on to the next active reader
             ptr = active_reader.next;
         }
 
-        // if none of the active readers are empty (usually because of high contention or spurious failures of `compare_exchange_weak`)
-        // then we should create a new node and push it onto the list
-        self.load_read_guard_slow(generation)
+        if reader.is_null() {
+            // if none of the active readers are empty (usually because of high contention or spurious failures of `compare_exchange_weak`)
+            // then we should create a new node and push it onto the list
+            self.load_read_guard_slow(generation)
+        } else {
+            reader
+        }
     }
 
     /// The slow path of begin_read_guard which neeeds to allocate
@@ -469,6 +485,7 @@ impl<W> HazardStrategy<W> {
             next: ptr::null_mut(),
             next_captured: ptr::null_mut(),
             generation: AtomicU32::new(generation),
+            affinity: thread::ThreadId::current(),
         }));
 
         let mut ptr = self.ptr.load(Ordering::Acquire);
