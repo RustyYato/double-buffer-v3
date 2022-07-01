@@ -225,6 +225,11 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
         &self,
         _: &mut Self::WriterTag,
     ) -> Result<Self::ValidationToken, Self::ValidationError> {
+        // increment the generation before swapping the buffers so that if a reader
+        // sees the old generation, then it's guranteed that they have the old buffer
+        // we use AcqRel here because:
+        // * Acquire: we need the flip to happen after the generation increment
+        // * Release: all subsequent readers should see this generation increment
         let generation = self.generation.fetch_add(2, Ordering::AcqRel);
 
         Ok(ValidationToken { generation })
@@ -236,8 +241,11 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
         ValidationToken { generation }: Self::ValidationToken,
     ) -> Self::Capture {
         // create a sub-sequence of nodes which are in the given generation
+
+        // use an Acquire load to syncronize with `load_read_guard_slow`
         let head = self.ptr.load(Ordering::Acquire);
 
+        // if we never had any active readers, then just exit
         if head.is_null() {
             return Capture {
                 generation: 0,
@@ -255,6 +263,8 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
 
         // SAFETY: we never remove links from the linked list so the ptr is either null or valid
         while let Some(active_reader) = unsafe { ptr.as_ref() } {
+            // use Acquire to syncronize with `begin_read_guard` and `load_read_guard` which use
+            // Release ordering to store generation
             let current = active_reader.generation.load(Ordering::Acquire);
 
             if current == generation {
@@ -311,10 +321,13 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
         // SAFETY: we never remove links from the linked list so the ptr is either null or valid
         // end is a node later in the list or null so all nodes between are valid
         while let Some(active_reader) = unsafe { ptr.as_ref() } {
+            // use Acquire to syncronize with `begin_read_guard` and `load_read_guard` which use
+            // Release ordering to store generation
             let current = active_reader.generation.load(Ordering::Acquire);
             let next = active_reader.next_captured;
             let reader_generation = current;
 
+            // these conditions should always be true given the unsafe requirement on `capture_readers`
             debug_assert!(
                 reader_generation == 0
                     || reader_generation == generation
@@ -339,6 +352,7 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
 
     #[inline]
     unsafe fn begin_read_guard(&self, reader: &mut Self::ReaderTag) -> Self::ReaderGuard {
+        // Acquire to syncronize with `validate_swap`
         let generation = self.generation.load(Ordering::Acquire);
 
         // SAFETY: the reader node is either null or valid and points
@@ -353,6 +367,8 @@ unsafe impl<W: WaitStrategy> Strategy for HazardStrategy<W> {
                 // with the cache, there will usually only be this reader and the writer
                 // who access this node, so there is minimal contention.
 
+                // Use Release/Relaxed because this is effectively a store operation
+                // and we only need to syncronize with `capture_readers` and `have_readers_exited`
                 match active_reader.generation.compare_exchange_weak(
                     0,
                     generation,
@@ -421,6 +437,11 @@ impl<W> HazardStrategy<W> {
         // SAFETY: we never remove links from the linked list so the ptr is either null or valid
         while let Some(active_reader) = unsafe { ptr.as_ref() } {
             // check if the given active reader is empty, and use it if it is
+            // this allows hazard strategy to minimize allocations where possible
+            // by using multiple reader for the same allocation
+
+            // Use Release/Relaxed because this is effectively a store operation
+            // and we only need to syncronize with `capture_readers` and `have_readers_exited`
             if active_reader
                 .generation
                 .compare_exchange_weak(0, generation, Ordering::Release, Ordering::Relaxed)
