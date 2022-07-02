@@ -152,9 +152,19 @@ where
 impl<W: WeakRef> Clone for Reader<W> {
     fn clone(&self) -> Self {
         if <StrategyOf<StrongOf<W>> as Strategy>::READER_TAG_NEEDS_CONSTRUCTION {
-            if let Ok(ptr) = W::upgrade(&self.ptr) {
+            let strong;
+            let shared = if let Some(shared) = <W as WeakRef>::as_ref(&self.ptr) {
+                Some(shared)
+            } else if let Ok(ptr) = W::upgrade(&self.ptr) {
+                strong = ptr;
+                Some(&*strong)
+            } else {
+                None
+            };
+
+            if let Some(shared) = shared {
                 // Safety: the writer is owned by this strategy as it was created by this strategy
-                let tag = unsafe { ptr.strategy.create_reader_tag_from_reader(&self.tag) };
+                let tag = unsafe { shared.strategy.create_reader_tag_from_reader(&self.tag) };
                 // Safety: the writer is owned by this strategy as it was created by this strategy
                 return unsafe { Self::from_raw_parts(tag, self.ptr.clone()) };
             }
